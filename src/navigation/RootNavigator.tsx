@@ -1,0 +1,48 @@
+import React from 'react';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { RootTabs } from './RootTabs';
+import { RootStackParamList } from './types';
+import { CirclePersonScreen } from '../screens/CirclePersonScreen';
+import { LocationShareScreen } from '../screens/LocationShareScreen';
+import { TripSetupScreen } from '../screens/TripSetupScreen';
+import { TripActiveScreen } from '../screens/TripActiveScreen';
+import { FakeCallSetupScreen } from '../screens/FakeCallSetupScreen';
+import { FakeCallIncomingScreen } from '../screens/FakeCallIncomingScreen';
+import { FakeCallOnCallScreen } from '../screens/FakeCallOnCallScreen';
+import { WellnessIncomingScreen } from '../screens/WellnessIncomingScreen';
+import { AlarmActiveScreen } from '../screens/AlarmActiveScreen';
+
+const Stack = createNativeStackNavigator<RootStackParamList>();
+
+export function RootNavigator() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="Tabs" component={RootTabs} />
+      <Stack.Screen name="CirclePerson" component={CirclePersonScreen} />
+      <Stack.Screen name="LocationShare" component={LocationShareScreen} />
+      <Stack.Screen name="Trip" component={TripSetupScreen} />
+      <Stack.Screen name="TripActive" component={TripActiveScreen} />
+      <Stack.Screen name="FakeCall" component={FakeCallSetupScreen} />
+      <Stack.Screen
+        name="FakeCallIncoming"
+        component={FakeCallIncomingScreen}
+        options={{ presentation: 'fullScreenModal', animation: 'fade' }}
+      />
+      <Stack.Screen
+        name="FakeCallOnCall"
+        component={FakeCallOnCallScreen}
+        options={{ presentation: 'fullScreenModal', animation: 'fade' }}
+      />
+      <Stack.Screen
+        name="WellnessIncoming"
+        component={WellnessIncomingScreen}
+        options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
+      />
+      <Stack.Screen
+        name="AlarmActive"
+        component={AlarmActiveScreen}
+        options={{ presentation: 'fullScreenModal', animation: 'fade' }}
+      />
+    </Stack.Navigator>
+  );
+}

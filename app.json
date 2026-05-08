@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "name": "Artemis",
+    "slug": "artemis",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "scheme": "artemis",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.artemis.app"
+    },
+    "android": {
+      "package": "com.artemis.app"
+    },
+    "plugins": [
+      "expo-font",
+      "expo-asset",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Artemis uses your location to share with your circle when you choose to."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Artemis lets you set a profile photo from your gallery.",
+          "cameraPermission": "Artemis lets you take a profile photo with your camera."
+        }
+      ]
+    ]
+  }
+}
