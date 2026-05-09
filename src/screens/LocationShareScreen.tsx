@@ -16,7 +16,7 @@ const MODES: { id: ShareMode; label: string; sub: string }[] = [
 export function LocationShareScreen() {
   const t = useTheme();
   const nav = useNavigation();
-  const { sharing, setSharing, shareMode, setShareMode, visibleTo, setVisibleTo, askPin } = useAppState();
+  const { sharing, shareStartedAt, setSharing, shareMode, setShareMode, visibleTo, setVisibleTo, askPin } = useAppState();
 
   const onMasterToggle = (next: boolean) => {
     if (next === sharing) return;
@@ -57,11 +57,11 @@ export function LocationShareScreen() {
               <Text variant="body" weight="semibold">
                 {sharing ? 'Sharing live location' : 'Not sharing'}
               </Text>
-              {sharing && (
+              {sharing && shareStartedAt && (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
                   <IconLock size={11} gold />
                   <Text variant="meta" color={t.colors.inkMute}>
-                    PIN-protected · since 14:32
+                    PIN-protected · since {new Date(shareStartedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </Text>
                 </View>
               )}
@@ -131,7 +131,7 @@ export function LocationShareScreen() {
                     {p.name}
                   </Text>
                   <Text variant="meta" color={t.colors.inkMute}>
-                    {visibleTo[p.id] && sharing ? 'Live · synced 12s ago' : 'Hidden'}
+                    {visibleTo[p.id] && sharing ? 'Live' : 'Hidden'}
                   </Text>
                 </View>
                 <Toggle on={!!visibleTo[p.id]} onChange={(b) => setVisibleTo(p.id, b)} disabled={!sharing} />

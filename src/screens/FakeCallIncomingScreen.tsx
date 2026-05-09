@@ -13,6 +13,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Text, Eyebrow } from '../components';
 import { IconPhone } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
+import { useAppState } from '../state/AppState';
 import { palette } from '../theme/tokens';
 import { RootStackParamList } from '../navigation/types';
 
@@ -21,6 +22,8 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 export function FakeCallIncomingScreen() {
   const t = useTheme();
   const nav = useNavigation<Nav>();
+  const { fakeCallCallerName } = useAppState();
+  const initial = fakeCallCallerName.trim().charAt(0).toUpperCase() || '?';
 
   const ring = useSharedValue(0);
   useEffect(() => {
@@ -38,9 +41,9 @@ export function FakeCallIncomingScreen() {
         <Eyebrow color="rgba(255,255,255,0.6)" style={{ marginBottom: 6 }}>
           INCOMING CALL
         </Eyebrow>
-        <Text style={{ fontFamily: t.type.display, fontSize: 36, color: '#fff' }}>Mamma</Text>
+        <Text style={{ fontFamily: t.type.display, fontSize: 36, color: '#fff' }}>{fakeCallCallerName}</Text>
         <Text variant="small" color="rgba(255,255,255,0.6)" style={{ marginTop: 4 }}>
-          mobil · 070-411 22 03
+          mobil
         </Text>
 
         <View style={{ marginTop: 50, alignItems: 'center', justifyContent: 'center' }}>
@@ -68,7 +71,7 @@ export function FakeCallIncomingScreen() {
             }}
           >
             <Text style={{ fontFamily: t.type.display, fontSize: 64, color: palette.forest900 }}>
-              M
+              {initial}
             </Text>
           </LinearGradient>
         </View>

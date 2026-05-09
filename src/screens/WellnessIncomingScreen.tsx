@@ -38,11 +38,10 @@ export function WellnessIncomingScreen() {
   useEffect(() => {
     v.value = withTiming(0, { duration: COUNTDOWN_MS, easing: Easing.linear });
     const id = setTimeout(() => {
-      // auto-escalate to "Need help"
-      nav.goBack();
+      respond('wellness_response', 'no response — auto escalated').finally(() => nav.goBack());
     }, COUNTDOWN_MS);
     return () => clearTimeout(id);
-  }, [nav, v]);
+  }, [nav, v]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const barStyle = useAnimatedStyle(() => ({ width: `${v.value * 100}%` }));
 
@@ -78,7 +77,7 @@ export function WellnessIncomingScreen() {
           wants to do a wellness check.
         </Text>
         <Text variant="bodyS" color={t.colors.inkSoft} style={{ textAlign: 'center', marginBottom: 24 }}>
-          Tap a response. Auto-escalates in 30s.
+          Tap a response. Auto-escalates in {COUNTDOWN_MS / 1000}s.
         </Text>
 
         <View

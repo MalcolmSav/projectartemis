@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ScrollView, View, Pressable } from 'react-native';
+import { ScrollView, View, Pressable, TextInput } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Text, Eyebrow, Card, PillButton } from '../components';
@@ -21,7 +21,7 @@ const TIMINGS = [
 export function FakeCallSetupScreen() {
   const t = useTheme();
   const nav = useNavigation<Nav>();
-  const { fakeCallScheduledAt, scheduleFakeCall, cancelFakeCallSchedule } = useAppState();
+  const { fakeCallScheduledAt, fakeCallCallerName, setFakeCallCallerName, scheduleFakeCall, cancelFakeCallSchedule } = useAppState();
   const [chosen, setChosen] = useState(30);
   const [now, setNow] = useState(Date.now());
 
@@ -52,14 +52,30 @@ export function FakeCallSetupScreen() {
       <ScrollView contentContainerStyle={{ paddingHorizontal: t.spacing.pageH, paddingBottom: 32 }}>
         <Card style={{ marginBottom: 18, alignItems: 'center', paddingVertical: 28 }}>
           <Text style={{ fontSize: 56, marginBottom: 12 }}>📞</Text>
-          <Eyebrow>CALLER · MAMMA</Eyebrow>
+          <Eyebrow>CALLER · {fakeCallCallerName.toUpperCase()}</Eyebrow>
           <Text style={{ fontFamily: t.type.display, fontSize: 44, marginTop: 8 }}>
             {remaining != null ? `${remaining}s` : `${chosen}s`}
           </Text>
           <Text variant="small" color={t.colors.inkSoft} style={{ marginTop: 6, textAlign: 'center' }}>
-            Schedules an iOS-style incoming call so you can leave any situation.
+            Schedules an incoming call so you can leave any situation.
           </Text>
         </Card>
+
+        <Eyebrow style={{ marginBottom: 8 }}>CALLER NAME</Eyebrow>
+        <TextInput
+          value={fakeCallCallerName}
+          onChangeText={setFakeCallCallerName}
+          placeholder="Mamma"
+          placeholderTextColor={t.colors.inkMute}
+          style={{
+            backgroundColor: t.colors.parchment,
+            borderRadius: t.radii.md,
+            padding: 14,
+            fontFamily: t.type.body,
+            color: t.colors.ink,
+            marginBottom: 22,
+          }}
+        />
 
         <Eyebrow style={{ marginBottom: 8 }}>WHEN</Eyebrow>
         <View style={{ flexDirection: 'row', gap: 6, marginBottom: 22, flexWrap: 'wrap' }}>
