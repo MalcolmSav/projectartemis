@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ScrollView, View, Pressable, TextInput, ActivityIndicator } from 'react-native';
+import { ScrollView, View, Pressable, TextInput, ActivityIndicator, Alert, RefreshControl } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { TopBar, Text, Eyebrow, Avatar, Card, PillButton, BottomSheet } from '../components';
@@ -18,7 +18,19 @@ export function CircleScreen() {
   const t = useTheme();
   const nav = useNavigation<Nav>();
   const { signOut } = useAuth();
-  const { members, pendingInvites, loading, invite, accept, decline, refresh } = useCircle();
+  const { members, pendingInvites, loading, invite, accept, decline, remove, refresh } = useCircle();
+  const [refreshing, setRefreshing] = useState(false);
+  const onPullRefresh = async () => {
+    setRefreshing(true);
+    await refresh();
+    setRefreshing(false);
+  };
+  const confirmRemove = (edgeId: string, name: string) => {
+    Alert.alert('Remove from circle?', `${name} will no longer see your check-ins.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: () => remove(edgeId) },
+    ]);
+  };
   const { latestByUser } = useCheckIns();
   const [addOpen, setAddOpen] = useState(false);
 
@@ -74,7 +86,10 @@ export function CircleScreen() {
           </>
         }
       />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: t.spacing.pageH, paddingBottom: 120 }}>
+      <ScrollView
+        contentContainerStyle={{ paddingHorizontal: t.spacing.pageH, paddingBottom: 120 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onPullRefresh} tintColor={t.colors.forest700} />}
+      >
         <Text variant="displayH1" style={{ marginBottom: 14 }}>
           My{' '}
           <Text variant="displayH1" italic accent>
@@ -126,6 +141,7 @@ export function CircleScreen() {
               <Pressable
                 key={m.edgeId}
                 onPress={() => nav.navigate('CirclePerson', { id: m.profile.id })}
+                onLongPress={() => confirmRemove(m.edgeId, m.profile.name ?? m.profile.email)}
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',

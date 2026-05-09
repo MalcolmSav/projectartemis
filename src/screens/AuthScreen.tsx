@@ -4,6 +4,7 @@ import { Text, Eyebrow, PillButton } from '../components';
 import { ArtemisMark } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
 import { useAuth } from '../state/Auth';
+import { supabase } from '../lib/supabase';
 
 type Mode = 'signIn' | 'signUp';
 
@@ -112,6 +113,27 @@ export function AuthScreen() {
             </Text>
           </Text>
         </Pressable>
+
+        {mode === 'signIn' && (
+          <Pressable
+            onPress={async () => {
+              if (!email) {
+                setErr('Enter your email first');
+                return;
+              }
+              setBusy(true);
+              const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
+              setBusy(false);
+              setErr(error ? error.message : null);
+              if (!error) setErr('Reset link sent — check your email.');
+            }}
+            style={{ marginTop: 12, alignItems: 'center' }}
+          >
+            <Text variant="small" color={t.colors.gold700} weight="semibold">
+              Forgot password?
+            </Text>
+          </Pressable>
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { ScrollView, View, Pressable } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Alert, ScrollView, View, Pressable, RefreshControl } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -32,11 +32,16 @@ import {
   IconShare,
   IconCal,
   IconChevron,
+  IconMessage,
+  IconClock,
 } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
 import { palette } from '../theme/tokens';
 import { useCircle } from '../hooks/useCircle';
 import { useCheckIns } from '../hooks/useCheckIns';
+import { useConversations } from '../hooks/useConversations';
+import { usePresence } from '../hooks/usePresence';
+import { useScheduledCheckin } from '../hooks/useScheduledCheckin';
 import { useAuth } from '../state/Auth';
 import { RootStackParamList } from '../navigation/types';
 
@@ -64,12 +69,50 @@ export function HomeScreen() {
   const t = useTheme();
   const nav = useNavigation<Nav>();
   const { profile } = useAuth();
-  const { members, pendingInvites } = useCircle();
-  const { latestByUser, pendingForMe, recordOk, recordAlarm, sendWellnessRequest } = useCheckIns();
+  const { members, pendingInvites, refresh: refreshCircle } = useCircle();
+  const { latestByUser, pendingForMe, recordOk, recordAlarm, sendWellnessRequest, refresh: refreshChecks } = useCheckIns();
+  const { unreadTotal } = useConversations();
+  const { byUser: presenceByUser } = usePresence();
+  const { scheduledFor, triggered, schedule, cancel: cancelSchedule } = useScheduledCheckin();
   const totalPending = pendingInvites.length + (pendingForMe ? 1 : 0);
+  const [refreshing, setRefreshing] = useState(false);
+  const onPullRefresh = async () => {
+    setRefreshing(true);
+    await Promise.all([refreshCircle(), refreshChecks()]);
+    setRefreshing(false);
+  };
   const [okSent, setOkSent] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+
+  // When the scheduled check-in time passes, prompt the user in-app
+  useEffect(() => {
+    if (!triggered) return;
+    Alert.alert(
+      '⏰ Check-in time',
+      `Your scheduled check-in has arrived. Are you OK?`,
+      [
+        {
+          text: "I'm OK 🌙",
+          onPress: async () => {
+            await recordOk('Responded to scheduled check-in');
+            await cancelSchedule();
+          },
+        },
+        {
+          text: '🚨 Send alarm',
+          style: 'destructive',
+          onPress: async () => {
+            await recordAlarm('Missed scheduled check-in — alarm triggered');
+            await cancelSchedule();
+            nav.navigate('AlarmActive');
+          },
+        },
+      ],
+      { cancelable: false },
+    );
+  }, [triggered]);
 
   const lastOk = profile ? latestByUser[profile.id] : undefined;
   const lastOkLabel = lastOk ? relativeTime(lastOk.created_at) : 'no check-in yet';
@@ -96,45 +139,89 @@ export function HomeScreen() {
     <View style={{ flex: 1, backgroundColor: t.colors.ivoryBg }}>
       <TopBar
         right={
-          <Pressable
-            onPress={() => setNotifOpen(true)}
-            style={[
-              {
-                width: 40,
-                height: 40,
-                borderRadius: 999,
-                backgroundColor: t.colors.parchment,
-                alignItems: 'center',
-                justifyContent: 'center',
-              },
-              t.shadows.soft,
-            ]}
-          >
-            <IconBell color={t.colors.inkSoft} />
-            {totalPending > 0 && (
-              <View
-                style={{
-                  position: 'absolute',
-                  top: 4,
-                  right: 4,
-                  minWidth: 16,
-                  height: 16,
-                  paddingHorizontal: 4,
+          <>
+            <Pressable
+              onPress={() => nav.navigate('Conversations')}
+              accessibilityLabel="Messages"
+              style={[
+                {
+                  width: 40,
+                  height: 40,
                   borderRadius: 999,
-                  backgroundColor: palette.crimson,
+                  backgroundColor: t.colors.parchment,
                   alignItems: 'center',
                   justifyContent: 'center',
-                }}
-              >
-                <Text style={{ color: '#fff', fontFamily: t.type.bodyBold, fontSize: 10, lineHeight: 14 }}>
-                  {totalPending}
-                </Text>
-              </View>
-            )}
-          </Pressable>
+                },
+                t.shadows.soft,
+              ]}
+            >
+              <IconMessage color={t.colors.inkSoft} />
+              {unreadTotal > 0 && (
+                <View
+                  style={{
+                    position: 'absolute',
+                    top: 4,
+                    right: 4,
+                    minWidth: 16,
+                    height: 16,
+                    paddingHorizontal: 4,
+                    borderRadius: 999,
+                    backgroundColor: palette.gold500,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Text style={{ color: palette.forest900, fontFamily: t.type.bodyBold, fontSize: 10, lineHeight: 14 }}>
+                    {unreadTotal > 9 ? '9+' : unreadTotal}
+                  </Text>
+                </View>
+              )}
+            </Pressable>
+            <Pressable
+              onPress={() => setNotifOpen(true)}
+              accessibilityLabel="Notifications"
+              style={[
+                {
+                  width: 40,
+                  height: 40,
+                  borderRadius: 999,
+                  backgroundColor: t.colors.parchment,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                },
+                t.shadows.soft,
+              ]}
+            >
+              <IconBell color={t.colors.inkSoft} />
+              {totalPending > 0 && (
+                <View
+                  style={{
+                    position: 'absolute',
+                    top: 4,
+                    right: 4,
+                    minWidth: 16,
+                    height: 16,
+                    paddingHorizontal: 4,
+                    borderRadius: 999,
+                    backgroundColor: palette.crimson,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontFamily: t.type.bodyBold, fontSize: 10, lineHeight: 14 }}>
+                    {totalPending}
+                  </Text>
+                </View>
+              )}
+            </Pressable>
+          </>
         }
       />
-      <ScrollView contentContainerStyle={{ paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: 120 }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onPullRefresh} tintColor={t.colors.forest700} />}
+      >
         <View style={{ paddingHorizontal: t.spacing.pageH, paddingBottom: 16 }}>
           <Eyebrow style={{ marginBottom: 8 }}>{`${greeting()}, ${profile?.name ?? ''}`}</Eyebrow>
           <Text variant="displayH1" style={{ lineHeight: 38 }}>
@@ -217,13 +304,20 @@ export function HomeScreen() {
           ) : (
             members.map((m) => {
               const last = latestByUser[m.profile.id];
-              const status: 'ok' | 'warn' | 'alarm' = last
-                ? last.kind === 'alarm'
-                  ? 'alarm'
-                  : Date.now() - new Date(last.created_at).getTime() < CHECKIN_STALE_MS
+              const presence = presenceByUser[m.profile.id];
+              const recentPresence = presence && Date.now() - new Date(presence.updated_at).getTime() < 5 * 60_000;
+              const status: 'ok' | 'warn' | 'alarm' = last && last.kind === 'alarm'
+                ? 'alarm'
+                : recentPresence
+                  ? 'ok'
+                  : last && Date.now() - new Date(last.created_at).getTime() < CHECKIN_STALE_MS
                     ? 'ok'
-                    : 'warn'
-                : 'warn';
+                    : 'warn';
+              const lastSeenText = recentPresence
+                ? 'Active now'
+                : last
+                  ? relativeTime(last.created_at)
+                  : 'no check-in';
               return (
                 <CircleCard
                   key={m.edgeId}
@@ -232,7 +326,7 @@ export function HomeScreen() {
                     id: m.profile.id,
                     name: m.profile.name ?? m.profile.email,
                     relation: m.relation ?? 'Friend',
-                    lastSeen: last ? relativeTime(last.created_at) : 'no check-in',
+                    lastSeen: lastSeenText,
                     lastLocation: '—',
                     status,
                     verified: m.verified,
@@ -288,11 +382,15 @@ export function HomeScreen() {
                 onPress={() => nav.navigate('Tabs' as any, { screen: 'Calendar' } as any)}
               />
               <QuickAction
-                icon={<IconShield color={palette.gold300} />}
-                label="Demo flow"
-                sub="Receive check"
-                accent
-                onPress={() => nav.navigate('WellnessIncoming', { fromName: 'Demo' })}
+                icon={<IconClock size={18} color={scheduledFor ? palette.gold500 : t.colors.forest700} />}
+                label={scheduledFor ? 'Check-in set' : 'Check on me at…'}
+                sub={
+                  scheduledFor
+                    ? scheduledFor.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                    : 'Schedule a time'
+                }
+                accent={!!scheduledFor}
+                onPress={() => setScheduleOpen(true)}
               />
             </View>
           </View>
@@ -314,6 +412,20 @@ export function HomeScreen() {
         onOpenCircle={() => {
           setNotifOpen(false);
           nav.navigate('Tabs' as any, { screen: 'Circle' } as any);
+        }}
+      />
+
+      <ScheduleCheckinSheet
+        open={scheduleOpen}
+        onClose={() => setScheduleOpen(false)}
+        current={scheduledFor}
+        onSchedule={async (d) => {
+          await schedule(d);
+          setScheduleOpen(false);
+        }}
+        onCancel={async () => {
+          await cancelSchedule();
+          setScheduleOpen(false);
         }}
       />
     </View>
@@ -588,6 +700,106 @@ function FriendPickerSheet({
 
       <PillButton variant="ghost" block style={{ marginTop: 14 }} onPress={onClose}>
         Cancel
+      </PillButton>
+    </BottomSheet>
+  );
+}
+
+function ScheduleCheckinSheet({
+  open,
+  onClose,
+  current,
+  onSchedule,
+  onCancel,
+}: {
+  open: boolean;
+  onClose: () => void;
+  current: Date | null;
+  onSchedule: (d: Date) => void;
+  onCancel: () => void;
+}) {
+  const t = useTheme();
+  const now = new Date();
+  const [hour, setHour] = useState(now.getHours());
+  const [minute, setMinute] = useState(Math.ceil(now.getMinutes() / 5) * 5 % 60);
+
+  const bump = (setter: (v: number) => void, val: number, mod: number, step: number) =>
+    setter(((val + step) % mod + mod) % mod);
+
+  const buildDate = () => {
+    const d = new Date();
+    d.setHours(hour, minute, 0, 0);
+    // If the time has already passed today, schedule for tomorrow
+    if (d.getTime() <= Date.now()) d.setDate(d.getDate() + 1);
+    return d;
+  };
+
+  const fmt2 = (n: number) => String(n).padStart(2, '0');
+
+  return (
+    <BottomSheet visible={open} onClose={onClose}>
+      <Text style={{ fontFamily: t.type.display, fontSize: 24, lineHeight: 32, paddingTop: 2, marginBottom: 4 }}>
+        Check on me at…
+      </Text>
+      <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 20 }}>
+        If you don't respond when the time comes, your circle is alerted.
+      </Text>
+
+      {/* Time picker */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 24 }}>
+        {/* Hour */}
+        <View style={{ alignItems: 'center', gap: 8 }}>
+          <Pressable
+            onPress={() => bump(setHour, hour, 24, 1)}
+            style={{ width: 48, height: 48, borderRadius: t.radii.md, backgroundColor: t.colors.moonlight, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Text variant="body" weight="semibold">▲</Text>
+          </Pressable>
+          <View style={{ width: 70, height: 56, borderRadius: t.radii.md, backgroundColor: t.colors.forest700, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ fontFamily: t.type.display, fontSize: 28, color: '#fff' }}>{fmt2(hour)}</Text>
+          </View>
+          <Pressable
+            onPress={() => bump(setHour, hour, 24, -1)}
+            style={{ width: 48, height: 48, borderRadius: t.radii.md, backgroundColor: t.colors.moonlight, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Text variant="body" weight="semibold">▼</Text>
+          </Pressable>
+        </View>
+
+        <Text style={{ fontFamily: t.type.display, fontSize: 32, color: t.colors.ink, marginBottom: 4 }}>:</Text>
+
+        {/* Minute */}
+        <View style={{ alignItems: 'center', gap: 8 }}>
+          <Pressable
+            onPress={() => bump(setMinute, minute, 60, 5)}
+            style={{ width: 48, height: 48, borderRadius: t.radii.md, backgroundColor: t.colors.moonlight, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Text variant="body" weight="semibold">▲</Text>
+          </Pressable>
+          <View style={{ width: 70, height: 56, borderRadius: t.radii.md, backgroundColor: t.colors.forest700, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ fontFamily: t.type.display, fontSize: 28, color: '#fff' }}>{fmt2(minute)}</Text>
+          </View>
+          <Pressable
+            onPress={() => bump(setMinute, minute, 60, -5)}
+            style={{ width: 48, height: 48, borderRadius: t.radii.md, backgroundColor: t.colors.moonlight, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Text variant="body" weight="semibold">▼</Text>
+          </Pressable>
+        </View>
+      </View>
+
+      <PillButton block onPress={() => onSchedule(buildDate())} style={{ marginBottom: 8 }}>
+        Set check-in for {fmt2(hour)}:{fmt2(minute)}
+      </PillButton>
+
+      {current && (
+        <PillButton variant="danger" block onPress={onCancel} style={{ marginBottom: 8 }}>
+          Cancel scheduled check-in
+        </PillButton>
+      )}
+
+      <PillButton variant="ghost" block onPress={onClose}>
+        Close
       </PillButton>
     </BottomSheet>
   );

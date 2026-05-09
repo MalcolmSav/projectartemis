@@ -187,3 +187,17 @@ export const IconShare = ({ size = 18, color = '#000' }: IconProps) => (
     <Path d="M8 11 L16 7 M8 13 L16 17" {...stroke(color)} />
   </Svg>
 );
+
+export const IconClock = ({ size = 18, color = '#000' }: IconProps) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Circle cx={12} cy={12} r={8.5} {...stroke(color)} />
+    <Path d="M12 7 V12 L15.5 14.5" {...stroke(color)} />
+  </Svg>
+);
+
+export const IconPin = ({ size = 18, color = '#000' }: IconProps) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M12 21s6-6 6-10a6 6 0 1 0 -12 0c0 4 6 10 6 10z" {...stroke(color)} />
+    <Circle cx={12} cy={11} r={2} {...stroke(color)} />
+  </Svg>
+);

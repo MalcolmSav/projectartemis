@@ -120,12 +120,15 @@ export function useCircle() {
 
   const remove = useCallback(
     async (edgeId: string) => {
-      const { error } = await supabase.from('circles').delete().eq('id', edgeId);
+      // Symmetric removal via RPC (RLS would otherwise leave the friend's mirror row)
+      const edge = members.find((m) => m.edgeId === edgeId);
+      if (!edge) return { error: 'Edge not found' };
+      const { error } = await supabase.rpc('remove_circle', { other_id: edge.profile.id });
       if (error) return { error: error.message };
       await refresh();
       return {};
     },
-    [refresh],
+    [refresh, members],
   );
 
   return { members, pendingInvites, loading, error, refresh, invite, accept, decline, remove };

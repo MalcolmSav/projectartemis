@@ -27,12 +27,14 @@ import { RootNavigator } from './src/navigation/RootNavigator';
 import { PinModal } from './src/components/PinModal';
 import { AuthScreen } from './src/screens/AuthScreen';
 import { OnboardingScreen } from './src/screens/OnboardingScreen';
+import { usePresenceBroadcast } from './src/hooks/usePresenceBroadcast';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 function GatedApp() {
   const t = useTheme();
   const { loading, session, profile } = useAuth();
+  usePresenceBroadcast();
 
   const navTheme = {
     ...(t.mode === 'night' ? DarkTheme : DefaultTheme),
