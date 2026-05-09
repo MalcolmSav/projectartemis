@@ -6,8 +6,11 @@ import { useTheme } from '../theme/ThemeProvider';
 import { useEvents, DBEvent } from '../hooks/useEvents';
 import { palette } from '../theme/tokens';
 
-const MONTH_LABEL = 'May 2026';
 const TODAY_ISO = new Date().toISOString().slice(0, 10);
+const NOW = new Date();
+const DISPLAY_YEAR = NOW.getFullYear();
+const DISPLAY_MONTH = NOW.getMonth(); // 0-indexed
+const MONTH_LABEL = NOW.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
 function dayOfMonth(iso: string) {
   return parseInt(iso.slice(8, 10), 10);
@@ -20,8 +23,8 @@ export function CalendarScreen() {
   const [prefillDate, setPrefillDate] = useState<string | null>(null);
 
   const openAddFor = (day: number) => {
-    const yyyy = new Date().getFullYear();
-    const mm = String(new Date().getMonth() + 1).padStart(2, '0');
+    const yyyy = String(DISPLAY_YEAR);
+    const mm = String(DISPLAY_MONTH + 1).padStart(2, '0');
     const dd = String(day).padStart(2, '0');
     setPrefillDate(`${yyyy}-${mm}-${dd}`);
     setAddOpen(true);
@@ -35,8 +38,10 @@ export function CalendarScreen() {
   });
 
   const todayDay = dayOfMonth(TODAY_ISO);
-  const monthDays = 31;
-  const startWeekday = 1;
+  // Days in month: passing 0 as day of next month gives last day of this month
+  const monthDays = new Date(DISPLAY_YEAR, DISPLAY_MONTH + 1, 0).getDate();
+  // JS getDay(): 0=Sun, 1=Mon…6=Sat. Grid header is Mon-first, so shift: Mon→0, Sun→6
+  const startWeekday = (new Date(DISPLAY_YEAR, DISPLAY_MONTH, 1).getDay() + 6) % 7;
 
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.ivoryBg }}>

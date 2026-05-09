@@ -22,10 +22,10 @@ export function TripSetupScreen() {
   const t = useTheme();
   const nav = useNavigation<Nav>();
   const { startTrip } = useAppState();
-  const [destination, setDestination] = useState('Karolinska');
-  const [eta, setEta] = useState('23:15');
+  const [destination, setDestination] = useState('');
+  const [eta, setEta] = useState('');
   const [transport, setTransport] = useState<Transport>('walk');
-  const [buddyId, setBuddyId] = useState(CIRCLE[0].id);
+  const [buddyId, setBuddyId] = useState(CIRCLE.length > 0 ? CIRCLE[0].id : '');
 
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.ivoryBg }}>
@@ -141,8 +141,9 @@ export function TripSetupScreen() {
         <PillButton
           size="lg"
           block
+          disabled={!destination.trim()}
           onPress={() => {
-            startTrip({ destination, eta, transport, buddyId, startedAt: Date.now() });
+            startTrip({ destination: destination.trim(), eta: eta.trim(), transport, buddyId, startedAt: Date.now() });
             nav.replace('TripActive');
           }}
         >

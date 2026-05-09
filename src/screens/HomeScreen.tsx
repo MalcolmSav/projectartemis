@@ -9,6 +9,7 @@ import Animated, {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { CHECKIN_STALE_MS } from '../lib/constants';
 import {
   TopBar,
   Text,
@@ -219,7 +220,7 @@ export function HomeScreen() {
               const status: 'ok' | 'warn' | 'alarm' = last
                 ? last.kind === 'alarm'
                   ? 'alarm'
-                  : Date.now() - new Date(last.created_at).getTime() < 6 * 3600_000
+                  : Date.now() - new Date(last.created_at).getTime() < CHECKIN_STALE_MS
                     ? 'ok'
                     : 'warn'
                 : 'warn';

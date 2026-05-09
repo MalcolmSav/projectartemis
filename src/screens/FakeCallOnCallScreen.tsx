@@ -5,6 +5,7 @@ import { useNavigation } from '@react-navigation/native';
 import { Text, Eyebrow } from '../components';
 import { IconPhone } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
+import { useAppState } from '../state/AppState';
 import { palette } from '../theme/tokens';
 
 function fmt(s: number) {
@@ -16,6 +17,8 @@ function fmt(s: number) {
 export function FakeCallOnCallScreen() {
   const t = useTheme();
   const nav = useNavigation();
+  const { fakeCallCallerName } = useAppState();
+  const initial = fakeCallCallerName.trim().charAt(0).toUpperCase() || '?';
   const [secs, setSecs] = useState(0);
   useEffect(() => {
     const id = setInterval(() => setSecs((s) => s + 1), 1000);
@@ -27,7 +30,7 @@ export function FakeCallOnCallScreen() {
       <Eyebrow color={palette.gold300} style={{ marginBottom: 6 }}>
         ON CALL
       </Eyebrow>
-      <Text style={{ fontFamily: t.type.display, fontSize: 36, color: '#fff' }}>Mamma</Text>
+      <Text style={{ fontFamily: t.type.display, fontSize: 36, color: '#fff' }}>{fakeCallCallerName}</Text>
       <Text variant="small" color="rgba(255,255,255,0.7)" style={{ marginTop: 4 }}>
         {fmt(secs)}
       </Text>
@@ -43,7 +46,7 @@ export function FakeCallOnCallScreen() {
           marginTop: 50,
         }}
       >
-        <Text style={{ fontFamily: t.type.display, fontSize: 64, color: palette.forest900 }}>M</Text>
+        <Text style={{ fontFamily: t.type.display, fontSize: 64, color: palette.forest900 }}>{initial}</Text>
       </LinearGradient>
 
       <View

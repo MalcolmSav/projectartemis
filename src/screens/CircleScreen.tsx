@@ -10,6 +10,7 @@ import { useCircle } from '../hooks/useCircle';
 import { useCheckIns } from '../hooks/useCheckIns';
 import { useAuth } from '../state/Auth';
 import { RootStackParamList } from '../navigation/types';
+import { CHECKIN_STALE_MS } from '../lib/constants';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -31,7 +32,7 @@ export function CircleScreen() {
     const c = latestByUser[id];
     if (!c) return 'warn';
     if (c.kind === 'alarm') return 'alarm';
-    return Date.now() - new Date(c.created_at).getTime() < 6 * 3600_000 ? 'ok' : 'warn';
+    return Date.now() - new Date(c.created_at).getTime() < CHECKIN_STALE_MS ? 'ok' : 'warn';
   };
   const lastSeenFor = (id: string) => {
     const c = latestByUser[id];

@@ -90,7 +90,7 @@ export function ProfileScreen() {
                 ••••
               </Text>
               <Text variant="meta" color={t.colors.inkMute}>
-                Demo: 4729 (PIN management coming with secure storage)
+                PIN management coming soon
               </Text>
             </View>
           </View>
