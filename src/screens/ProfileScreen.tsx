@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { ScrollView, View, Pressable, TextInput, Alert } from 'react-native';
+import { ScrollView, View, Pressable, TextInput, Alert, RefreshControl } from 'react-native';
 import { TopBar, Text, Eyebrow, Avatar, Card, Divider, PillButton, BottomSheet } from '../components';
-import { ArtemisMark } from '../components/icons';
+import { ArtemisMark, IconLock } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
 import { useAuth } from '../state/Auth';
 import { useEvents } from '../hooks/useEvents';
 import { supabase } from '../lib/supabase';
 import { pickAndUploadAvatar } from '../lib/avatar';
+import { getPin, setPin, isDefaultPin } from '../lib/pin';
 import { palette } from '../theme/tokens';
 
 export function ProfileScreen() {
@@ -17,6 +18,11 @@ export function ProfileScreen() {
 
   const display = profile?.name?.trim() || profile?.email?.split('@')[0] || '—';
   const [uploading, setUploading] = useState(false);
+  const [pinOpen, setPinOpen] = useState(false);
+  const [pinIsDefault, setPinIsDefault] = useState(true);
+  React.useEffect(() => {
+    isDefaultPin().then(setPinIsDefault);
+  }, [pinOpen]);
 
   const onPickAvatar = async () => {
     if (!profile) return;
@@ -30,22 +36,23 @@ export function ProfileScreen() {
     <View style={{ flex: 1, backgroundColor: t.colors.ivoryBg }}>
       <TopBar />
       <ScrollView contentContainerStyle={{ paddingHorizontal: t.spacing.pageH, paddingBottom: 120 }}>
-        <View style={{ alignItems: 'center', paddingTop: 12, paddingBottom: 22 }}>
-          <Pressable onPress={onPickAvatar} disabled={uploading}>
-            <Avatar name={display} size={84} ring photoUri={profile?.avatar_url ?? undefined} />
+        <View style={{ alignItems: 'center', paddingTop: 16, paddingBottom: 22 }}>
+          <Pressable onPress={onPickAvatar} disabled={uploading} accessibilityLabel="Change photo">
+            <Avatar name={display} size={92} ring photoUri={profile?.avatar_url ?? undefined} />
           </Pressable>
-          <Text variant="small" weight="semibold" color={t.colors.gold700} style={{ marginTop: 8 }}>
+          <Text variant="small" weight="semibold" color={t.colors.gold700} style={{ marginTop: 12 }}>
             {uploading ? 'Uploading…' : profile?.avatar_url ? 'Change photo' : 'Add photo'}
           </Text>
           <Text
             style={{
               fontFamily: t.type.display,
-              fontSize: 26,
-              lineHeight: 34,
-              marginTop: 14,
-              paddingTop: 4,
+              fontSize: 28,
+              lineHeight: 40,
+              marginTop: 18,
               textAlign: 'center',
+              paddingHorizontal: 8,
             }}
+            numberOfLines={2}
           >
             {display}
           </Text>
@@ -83,18 +90,23 @@ export function ProfileScreen() {
         </Card>
 
         <Eyebrow style={{ marginBottom: 8 }}>SAFETY PIN</Eyebrow>
-        <Card style={{ marginBottom: 18 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <View>
-              <Text variant="body" weight="semibold" style={{ letterSpacing: 6 }}>
-                ••••
-              </Text>
-              <Text variant="meta" color={t.colors.inkMute}>
-                PIN management coming soon
+        <Pressable onPress={() => setPinOpen(true)}>
+          <Card style={{ marginBottom: 18 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flex: 1 }}>
+                <Text variant="body" weight="semibold" style={{ letterSpacing: 6 }}>
+                  ••••
+                </Text>
+                <Text variant="meta" color={pinIsDefault ? t.colors.crimson : t.colors.inkMute}>
+                  {pinIsDefault ? 'Still using demo PIN — tap to change' : 'PIN set'}
+                </Text>
+              </View>
+              <Text variant="small" weight="semibold" color={t.colors.gold700}>
+                Change
               </Text>
             </View>
-          </View>
-        </Card>
+          </Card>
+        </Pressable>
 
         {events.length > 0 && (
           <>
@@ -163,6 +175,33 @@ export function ProfileScreen() {
           Sign out
         </PillButton>
 
+        <PillButton
+          variant="ghost"
+          block
+          style={{ marginTop: 8 }}
+          onPress={() => {
+            Alert.alert(
+              'Delete account?',
+              'This permanently removes your profile, circle, events and check-ins. This cannot be undone.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Delete',
+                  style: 'destructive',
+                  onPress: async () => {
+                    await supabase.rpc('delete_my_account');
+                    await signOut();
+                  },
+                },
+              ],
+            );
+          }}
+        >
+          <Text variant="small" weight="semibold" color={t.colors.crimson}>
+            Delete account
+          </Text>
+        </PillButton>
+
         <View style={{ alignItems: 'center', opacity: 0.4, marginTop: 24 }}>
           <ArtemisMark size={36} moonColor={t.colors.forest700} />
           <Text style={{ fontFamily: t.type.displayItalic, fontSize: 12, marginTop: 6, color: t.colors.inkMute }}>
@@ -179,7 +218,115 @@ export function ProfileScreen() {
           setEditOpen(false);
         }}
       />
+      <ChangePinSheet open={pinOpen} onClose={() => setPinOpen(false)} />
     </View>
+  );
+}
+
+function ChangePinSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const t = useTheme();
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  React.useEffect(() => {
+    if (open) {
+      setCurrent('');
+      setNext('');
+      setConfirm('');
+      setErr(null);
+      setDone(false);
+    }
+  }, [open]);
+
+  const submit = async () => {
+    setErr(null);
+    const expected = await getPin();
+    if (current !== expected) return setErr('Current PIN is wrong');
+    if (!/^\d{4}$/.test(next)) return setErr('New PIN must be 4 digits');
+    if (next !== confirm) return setErr("PINs don't match");
+    setBusy(true);
+    try {
+      await setPin(next);
+      setDone(true);
+      setTimeout(onClose, 700);
+    } catch (e: any) {
+      setErr(e.message);
+    }
+    setBusy(false);
+  };
+
+  const input = {
+    backgroundColor: t.colors.moonlight,
+    borderRadius: t.radii.md,
+    padding: 14,
+    fontFamily: t.type.body,
+    color: t.colors.ink,
+    marginBottom: 12,
+    fontSize: 18,
+    letterSpacing: 6,
+  };
+
+  return (
+    <BottomSheet visible={open} onClose={onClose}>
+      <Text style={{ fontFamily: t.type.display, fontSize: 24, lineHeight: 32, paddingTop: 2, marginBottom: 4 }}>
+        Change PIN
+      </Text>
+      <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 16 }}>
+        Used to confirm sensitive actions like turning off location sharing. 4 digits.
+      </Text>
+
+      <Eyebrow style={{ marginBottom: 6 }}>CURRENT PIN</Eyebrow>
+      <TextInput
+        value={current}
+        onChangeText={(s) => setCurrent(s.replace(/[^0-9]/g, '').slice(0, 4))}
+        keyboardType="number-pad"
+        secureTextEntry
+        style={input}
+        placeholderTextColor={t.colors.inkMute}
+      />
+      <Eyebrow style={{ marginBottom: 6 }}>NEW PIN</Eyebrow>
+      <TextInput
+        value={next}
+        onChangeText={(s) => setNext(s.replace(/[^0-9]/g, '').slice(0, 4))}
+        keyboardType="number-pad"
+        secureTextEntry
+        style={input}
+        placeholderTextColor={t.colors.inkMute}
+      />
+      <Eyebrow style={{ marginBottom: 6 }}>CONFIRM NEW PIN</Eyebrow>
+      <TextInput
+        value={confirm}
+        onChangeText={(s) => setConfirm(s.replace(/[^0-9]/g, '').slice(0, 4))}
+        keyboardType="number-pad"
+        secureTextEntry
+        style={input}
+        placeholderTextColor={t.colors.inkMute}
+      />
+
+      {err && (
+        <Text variant="small" color={t.colors.crimson} style={{ marginBottom: 8 }}>
+          {err}
+        </Text>
+      )}
+      {done && (
+        <Text variant="small" color={t.colors.statusOk} style={{ marginBottom: 8 }}>
+          PIN updated ✓
+        </Text>
+      )}
+
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <PillButton variant="ghost" style={{ flex: 1 }} onPress={onClose}>
+          Cancel
+        </PillButton>
+        <PillButton style={{ flex: 1 }} onPress={submit} disabled={busy}>
+          {busy ? 'Saving…' : 'Save PIN'}
+        </PillButton>
+      </View>
+    </BottomSheet>
   );
 }
 

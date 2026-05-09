@@ -3,6 +3,8 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { RootTabs } from './RootTabs';
 import { RootStackParamList } from './types';
 import { CirclePersonScreen } from '../screens/CirclePersonScreen';
+import { ChatScreen } from '../screens/ChatScreen';
+import { ConversationsScreen } from '../screens/ConversationsScreen';
 import { LocationShareScreen } from '../screens/LocationShareScreen';
 import { TripSetupScreen } from '../screens/TripSetupScreen';
 import { TripActiveScreen } from '../screens/TripActiveScreen';
@@ -19,6 +21,8 @@ export function RootNavigator() {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Tabs" component={RootTabs} />
       <Stack.Screen name="CirclePerson" component={CirclePersonScreen} />
+      <Stack.Screen name="Chat" component={ChatScreen} options={{ animation: 'slide_from_right' }} />
+      <Stack.Screen name="Conversations" component={ConversationsScreen} options={{ animation: 'slide_from_right' }} />
       <Stack.Screen name="LocationShare" component={LocationShareScreen} />
       <Stack.Screen name="Trip" component={TripSetupScreen} />
       <Stack.Screen name="TripActive" component={TripActiveScreen} />

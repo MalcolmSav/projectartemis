@@ -1,13 +1,17 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Pressable, TextInput, Platform } from 'react-native';
+import { View, Pressable, TextInput, Platform, Image } from 'react-native';
 import MapView, { Marker, Circle as MapCircle, PROVIDER_DEFAULT } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Text, Eyebrow, PillButton, BottomSheet, Toggle } from '../components';
+import { RootStackParamList } from '../navigation/types';
 import { ArtemisMark, IconLocate, IconWarn } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
 import { useReports, DBReport } from '../hooks/useReports';
 import { useCircle } from '../hooks/useCircle';
+import { usePresence } from '../hooks/usePresence';
 import { ReportKind } from '../data/demo';
 import { palette } from '../theme/tokens';
 
@@ -46,10 +50,15 @@ const MAP_STYLE_NIGHT = [
   { featureType: 'poi.business', stylers: [{ visibility: 'off' }] },
 ];
 
+type Nav = NativeStackNavigationProp<RootStackParamList>;
+
 export function MapScreen() {
   const t = useTheme();
+  const nav = useNavigation<Nav>();
   const { reports, addReport } = useReports();
   const { members } = useCircle();
+  const { byUser: presenceByUser } = usePresence();
+  const [filter, setFilter] = useState<'all' | ReportKind>('all');
   const mapRef = useRef<MapView | null>(null);
   const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [permDenied, setPermDenied] = useState(false);
@@ -71,14 +80,35 @@ export function MapScreen() {
   }, []);
 
   // Reports already have real lat/lng from the DB.
-  const reportCoords = reports;
+  const reportCoords = filter === 'all' ? reports : reports.filter((r) => r.kind === filter);
 
-  // Real circle members — but we don't have their location yet (no live geo).
-  // For now, show no circle pins until we wire location sharing → DB.
-  const circleCoords: Array<{ id: string; name: string; lat: number; lng: number }> = useMemo(
-    () => [],
-    [members],
-  );
+  // Real circle members — pull live coords from presence table (include stale for last-known pin).
+  const circleCoords = useMemo(() => {
+    return members
+      .map((m) => {
+        const p = presenceByUser[m.profile.id];
+        if (!p) return null;
+        const stale = Date.now() - new Date(p.updated_at).getTime() > 5 * 60_000;
+        return {
+          id: m.profile.id,
+          name: m.profile.name ?? m.profile.email,
+          avatar: m.profile.avatar_url,
+          lat: p.lat,
+          lng: p.lng,
+          stale,
+          updatedAt: p.updated_at,
+        };
+      })
+      .filter(Boolean) as Array<{
+        id: string;
+        name: string;
+        avatar: string | null;
+        lat: number;
+        lng: number;
+        stale: boolean;
+        updatedAt: string;
+      }>;
+  }, [members, presenceByUser]);
 
   const recenter = () => {
     if (!coords || !mapRef.current) return;
@@ -130,52 +160,88 @@ export function MapScreen() {
               </React.Fragment>
             ))}
 
-          {circleCoords.map((p) => (
-            <Marker
-              key={p.id}
-              coordinate={{ latitude: p.lat, longitude: p.lng }}
-              anchor={{ x: 0.5, y: 1 }}
-              tracksViewChanges={false}
-            >
-              <View style={{ alignItems: 'center' }}>
-                <View
-                  style={[
-                    { borderRadius: 999, padding: 2, backgroundColor: t.colors.parchment },
-                    t.shadows.soft,
-                  ]}
-                >
-                  <LinearGradient
-                    colors={[palette.gold300, palette.gold500]}
-                    style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: 999,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      borderWidth: 2,
-                      borderColor: palette.gold500,
-                    }}
+          {circleCoords.map((p) => {
+            const pinColor = p.stale ? t.colors.inkMute : palette.gold500;
+            const staleLabel = p.stale
+              ? (() => {
+                  const mins = Math.round((Date.now() - new Date(p.updatedAt).getTime()) / 60_000);
+                  if (mins < 60) return `${mins}m ago`;
+                  return `${Math.floor(mins / 60)}h ago`;
+                })()
+              : null;
+            return (
+              <Marker
+                key={p.id}
+                coordinate={{ latitude: p.lat, longitude: p.lng }}
+                anchor={{ x: 0.5, y: 1 }}
+                tracksViewChanges={false}
+                onPress={() => nav.navigate('CirclePerson', { id: p.id })}
+              >
+                <View style={{ alignItems: 'center', opacity: p.stale ? 0.55 : 1 }}>
+                  {p.stale && (
+                    <View
+                      style={{
+                        backgroundColor: t.colors.parchment,
+                        borderRadius: 6,
+                        paddingHorizontal: 5,
+                        paddingVertical: 2,
+                        marginBottom: 3,
+                      }}
+                    >
+                      <Text style={{ fontFamily: t.type.body, fontSize: 9, color: t.colors.inkMute }}>
+                        {staleLabel}
+                      </Text>
+                    </View>
+                  )}
+                  <View
+                    style={[
+                      { borderRadius: 999, padding: 2, backgroundColor: t.colors.parchment },
+                      t.shadows.soft,
+                    ]}
                   >
-                    <Text style={{ fontFamily: t.type.display, fontSize: 16, color: palette.forest900 }}>
-                      {p.name[0]}
-                    </Text>
-                  </LinearGradient>
+                    <View
+                      style={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: 999,
+                        borderWidth: 2,
+                        borderColor: pinColor,
+                        overflow: 'hidden',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: pinColor,
+                      }}
+                    >
+                      {p.avatar ? (
+                        <Image source={{ uri: p.avatar }} style={{ width: 40, height: 40 }} />
+                      ) : (
+                        <LinearGradient
+                          colors={p.stale ? [t.colors.moonlight, t.colors.hairline] : [palette.gold300, palette.gold500]}
+                          style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}
+                        >
+                          <Text style={{ fontFamily: t.type.display, fontSize: 16, color: p.stale ? t.colors.inkSoft : palette.forest900 }}>
+                            {p.name[0]}
+                          </Text>
+                        </LinearGradient>
+                      )}
+                    </View>
+                  </View>
+                  <View
+                    style={{
+                      width: 0,
+                      height: 0,
+                      borderLeftWidth: 5,
+                      borderRightWidth: 5,
+                      borderTopWidth: 7,
+                      borderLeftColor: 'transparent',
+                      borderRightColor: 'transparent',
+                      borderTopColor: pinColor,
+                    }}
+                  />
                 </View>
-                <View
-                  style={{
-                    width: 0,
-                    height: 0,
-                    borderLeftWidth: 5,
-                    borderRightWidth: 5,
-                    borderTopWidth: 7,
-                    borderLeftColor: 'transparent',
-                    borderRightColor: 'transparent',
-                    borderTopColor: palette.gold500,
-                  }}
-                />
-              </View>
-            </Marker>
-          ))}
+              </Marker>
+            );
+          })}
         </MapView>
       )}
 
@@ -247,12 +313,72 @@ export function MapScreen() {
               Community Safety Layer
             </Text>
             <Text variant="meta" color={t.colors.inkMute}>
-              {reports.length} reports nearby
+              {reportCoords.length} reports {filter === 'all' ? 'nearby' : `(${filter})`}
             </Text>
           </View>
           <Toggle on={showLayer} onChange={setShowLayer} />
         </View>
+
+        {showLayer && (
+          <View style={{ flexDirection: 'row', gap: 6 }}>
+            {(['all', 'red', 'yellow', 'green'] as const).map((k) => {
+              const active = filter === k;
+              const dot = k === 'all' ? null : (
+                <View
+                  style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: REPORT_HEX[k as ReportKind], marginRight: 6 }}
+                />
+              );
+              return (
+                <Pressable
+                  key={k}
+                  onPress={() => setFilter(k)}
+                  style={[
+                    {
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      paddingVertical: 8,
+                      paddingHorizontal: 12,
+                      borderRadius: 999,
+                      backgroundColor: active ? t.colors.forest700 : t.colors.parchment,
+                    },
+                    t.shadows.soft,
+                  ]}
+                >
+                  {dot}
+                  <Text variant="meta" weight="semibold" color={active ? palette.gold300 : t.colors.inkSoft}>
+                    {k === 'all' ? 'All' : k.charAt(0).toUpperCase() + k.slice(1)}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
       </View>
+
+      {/* Friends-not-sharing hint — only when NO presence at all (not even stale) */}
+      {circleCoords.length === 0 && members.length > 0 && (
+        <View
+          style={[
+            {
+              position: 'absolute',
+              left: t.spacing.pageH,
+              right: t.spacing.pageH + 160,
+              bottom: 100,
+              backgroundColor: t.colors.parchment,
+              padding: 12,
+              borderRadius: t.radii.md,
+            },
+            t.shadows.soft,
+          ]}
+        >
+          <Text variant="meta" weight="semibold" color={t.colors.gold700}>
+            FRIENDS NOT SHARING
+          </Text>
+          <Text variant="meta" color={t.colors.inkSoft}>
+            None of your circle has location sharing on right now.
+          </Text>
+        </View>
+      )}
 
       {/* Floating report button */}
       <Pressable

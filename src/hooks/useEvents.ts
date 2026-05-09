@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase, Profile } from '../lib/supabase';
 import { useAuth } from '../state/Auth';
 
 export interface DBEvent {
   id: string;
   user_id: string;
-  date: string; // YYYY-MM-DD
+  date: string;
   title: string;
   time: string | null;
   location: string | null;
@@ -14,19 +14,33 @@ export interface DBEvent {
   created_at: string;
 }
 
+export interface FriendEvent extends DBEvent {
+  owner: Profile | null;
+}
+
 export function useEvents() {
   const { user } = useAuth();
   const [events, setEvents] = useState<DBEvent[]>([]);
+  const [friendEvents, setFriendEvents] = useState<FriendEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     if (!user) return;
+    // My events
     const { data } = await supabase
       .from('events')
       .select('*')
       .eq('user_id', user.id)
       .order('date', { ascending: true });
     setEvents((data ?? []) as DBEvent[]);
+
+    // Friends' visible events — RLS already filters by calendar_shares level
+    const { data: fe } = await supabase
+      .from('events')
+      .select('*, owner:profiles!events_user_id_fkey(*)')
+      .neq('user_id', user.id)
+      .order('date', { ascending: true });
+    setFriendEvents((fe ?? []) as FriendEvent[]);
     setLoading(false);
   }, [user]);
 
@@ -39,7 +53,7 @@ export function useEvents() {
     if (!user) return;
     const topic = `events:${user.id}:${Math.random().toString(36).slice(2)}`;
     const ch = supabase.channel(topic);
-    ch.on('postgres_changes', { event: '*', schema: 'public', table: 'events', filter: `user_id=eq.${user.id}` }, refresh).subscribe();
+    ch.on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, refresh).subscribe();
     return () => {
       supabase.removeChannel(ch);
     };
@@ -67,5 +81,5 @@ export function useEvents() {
     return error ? { error: error.message } : {};
   }, []);
 
-  return { events, loading, refresh, addEvent, removeEvent };
+  return { events, friendEvents, loading, refresh, addEvent, removeEvent };
 }

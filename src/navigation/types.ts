@@ -1,6 +1,8 @@
 export type RootStackParamList = {
   Tabs: undefined;
   CirclePerson: { id: string };
+  Chat: { userId: string };
+  Conversations: undefined;
   LocationShare: undefined;
   Trip: undefined;
   TripActive: undefined;

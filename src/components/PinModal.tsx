@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Modal, Pressable, View, TextInput } from 'react-native';
 import { useAppState } from '../state/AppState';
-import { USER } from '../data/demo';
+import { getPin } from '../lib/pin';
 import { useTheme } from '../theme/ThemeProvider';
 import { Text, Eyebrow } from './Text';
 import { PillButton } from './PillButton';
@@ -21,9 +21,10 @@ export function PinModal() {
     }
   }, [visible]);
 
-  const submit = (next: string) => {
+  const submit = async (next: string) => {
     if (next.length < 4) return;
-    if (next === USER.pin) {
+    const expected = await getPin();
+    if (next === expected) {
       const cb = pinAsk?.onOk;
       clearPinAsk();
       cb?.();

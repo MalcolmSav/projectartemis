@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { ScrollView, View, Pressable, ActivityIndicator } from 'react-native';
+import { ScrollView, View, Pressable, ActivityIndicator, Linking, Alert } from 'react-native';
+import { useCheckIns } from '../hooks/useCheckIns';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Text, Eyebrow, Avatar, Card, PillButton, Divider, Row } from '../components';
 import { IconChevron, IconPhone, IconMessage, IconShield, BowArrow } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
@@ -9,19 +11,37 @@ import { palette } from '../theme/tokens';
 import { supabase, Profile } from '../lib/supabase';
 import { RootStackParamList } from '../navigation/types';
 
+interface RecentCheckIn {
+  id: string;
+  kind: 'ok' | 'wellness_request' | 'wellness_response' | 'alarm';
+  note: string | null;
+  created_at: string;
+}
+
 export function CirclePersonScreen() {
   const t = useTheme();
-  const nav = useNavigation();
+  const nav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<RootStackParamList, 'CirclePerson'>>();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [activity, setActivity] = useState<RecentCheckIn[]>([]);
+  const { sendWellnessRequest } = useCheckIns();
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const { data } = await supabase.from('profiles').select('*').eq('id', route.params.id).maybeSingle();
+      const [{ data: prof }, { data: ci }] = await Promise.all([
+        supabase.from('profiles').select('*').eq('id', route.params.id).maybeSingle(),
+        supabase
+          .from('check_ins')
+          .select('id, kind, note, created_at')
+          .eq('user_id', route.params.id)
+          .order('created_at', { ascending: false })
+          .limit(10),
+      ]);
       if (!cancelled) {
-        setProfile(data ?? null);
+        setProfile(prof ?? null);
+        setActivity((ci ?? []) as RecentCheckIn[]);
         setLoading(false);
       }
     })();
@@ -50,7 +70,24 @@ export function CirclePersonScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.ivoryBg }}>
       <LinearGradient colors={[t.colors.moonlight, t.colors.ivoryBg]} style={{ paddingTop: 64, paddingBottom: 22 }}>
-        <Pressable onPress={() => nav.goBack()} style={{ position: 'absolute', top: 60, left: 22, padding: 6 }}>
+        <Pressable
+          onPress={() => (nav.canGoBack() ? nav.goBack() : (nav as any).navigate('Tabs', { screen: 'Circle' }))}
+          hitSlop={16}
+          accessibilityLabel="Back"
+          style={{
+            position: 'absolute',
+            top: 56,
+            left: 16,
+            width: 40,
+            height: 40,
+            borderRadius: 999,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: t.colors.parchment,
+            zIndex: 10,
+            ...t.shadows.soft,
+          }}
+        >
           <IconChevron dir="left" color={t.colors.inkSoft} />
         </Pressable>
         <View style={{ alignItems: 'center' }}>
@@ -67,13 +104,37 @@ export function CirclePersonScreen() {
 
       <ScrollView contentContainerStyle={{ paddingHorizontal: t.spacing.pageH, paddingBottom: 120 }}>
         <View style={{ flexDirection: 'row', gap: 8, marginBottom: 18 }}>
-          <PillButton style={{ flex: 1 }} iconLeft={<IconPhone size={14} color={palette.gold300} />}>
+          <PillButton
+            style={{ flex: 1 }}
+            iconLeft={<IconPhone size={14} color={palette.gold300} />}
+            onPress={async () => {
+              if (!profile.phone) return Alert.alert('No phone number', `${displayName} hasn't added a phone yet.`);
+              const url = `tel:${profile.phone.replace(/\s+/g, '')}`;
+              const ok = await Linking.canOpenURL(url);
+              if (ok) Linking.openURL(url);
+              else Alert.alert('Cannot place call', 'This device cannot make phone calls.');
+            }}
+          >
             Call
           </PillButton>
-          <PillButton variant="secondary" style={{ flex: 1 }} iconLeft={<IconMessage size={14} color={t.colors.forest700} />}>
+          <PillButton
+            variant="secondary"
+            style={{ flex: 1 }}
+            iconLeft={<IconMessage size={14} color={t.colors.forest700} />}
+            onPress={() => nav.navigate('Chat', { userId: profile.id })}
+          >
             Message
           </PillButton>
-          <PillButton variant="secondary" style={{ width: 52 }}>
+          <PillButton
+            variant="secondary"
+            style={{ width: 52 }}
+            accessibilityLabel="Send wellness check"
+            onPress={async () => {
+              const res = await sendWellnessRequest(profile.id);
+              if (res.error) Alert.alert('Could not send', res.error);
+              else Alert.alert('Wellness check sent', `${displayName} will see it on their Home screen.`);
+            }}
+          >
             <IconShield color={t.colors.forest700} />
           </PillButton>
         </View>
@@ -89,7 +150,42 @@ export function CirclePersonScreen() {
           ) : null}
           {profile.bio ? <Row label="Bio" value={profile.bio} /> : null}
         </Card>
+
+        {activity.length > 0 && (
+          <>
+            <Eyebrow style={{ marginTop: 22, marginBottom: 8 }}>RECENT ACTIVITY</Eyebrow>
+            <Card>
+              {activity.map((c, i) => (
+                <View key={c.id}>
+                  <View style={{ paddingVertical: 8 }}>
+                    <Text variant="body" weight="semibold">
+                      {labelFor(c.kind)}
+                    </Text>
+                    <Text variant="meta" color={t.colors.inkMute}>
+                      {new Date(c.created_at).toLocaleString()}
+                    </Text>
+                    {c.note ? (
+                      <Text variant="small" color={t.colors.inkSoft} style={{ marginTop: 4 }}>
+                        {c.note}
+                      </Text>
+                    ) : null}
+                  </View>
+                  {i < activity.length - 1 && <Divider />}
+                </View>
+              ))}
+            </Card>
+          </>
+        )}
       </ScrollView>
     </View>
   );
+}
+
+function labelFor(kind: RecentCheckIn['kind']) {
+  switch (kind) {
+    case 'ok': return '✅ Checked in OK';
+    case 'wellness_request': return '🏹 Sent a wellness check';
+    case 'wellness_response': return '💬 Responded to a wellness check';
+    case 'alarm': return '🚨 Triggered an alarm';
+  }
 }
