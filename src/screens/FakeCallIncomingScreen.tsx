@@ -41,7 +41,7 @@ export function FakeCallIncomingScreen() {
         <Eyebrow color="rgba(255,255,255,0.6)" style={{ marginBottom: 6 }}>
           INCOMING CALL
         </Eyebrow>
-        <Text style={{ fontFamily: t.type.display, fontSize: 36, color: '#fff' }}>{fakeCallCallerName}</Text>
+        <Text style={{ fontFamily: t.type.display, fontSize: 36, color: '#fff', paddingTop: 4, includeFontPadding: false }}>{fakeCallCallerName}</Text>
         <Text variant="small" color="rgba(255,255,255,0.6)" style={{ marginTop: 4 }}>
           mobil
         </Text>
@@ -70,7 +70,7 @@ export function FakeCallIncomingScreen() {
               justifyContent: 'center',
             }}
           >
-            <Text style={{ fontFamily: t.type.display, fontSize: 64, color: palette.forest900 }}>
+            <Text style={{ fontFamily: t.type.display, fontSize: 64, color: palette.forest900, paddingTop: 6, includeFontPadding: false }}>
               {initial}
             </Text>
           </LinearGradient>

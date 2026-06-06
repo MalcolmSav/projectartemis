@@ -1,17 +1,28 @@
 import React, { useState } from 'react';
-import { View, TextInput, ScrollView, KeyboardAvoidingView, Platform, Pressable } from 'react-native';
+import { View, TextInput, ScrollView, KeyboardAvoidingView, Platform, Pressable, Alert } from 'react-native';
 import { Text, Eyebrow, PillButton, Avatar } from '../components';
 import { useTheme } from '../theme/ThemeProvider';
 import { useAuth } from '../state/Auth';
 import { supabase } from '../lib/supabase';
 import { pickAndUploadAvatar } from '../lib/avatar';
+import { OnboardingCircleStep } from './OnboardingCircleStep';
+import { OnboardingLocationStep } from './OnboardingLocationStep';
+import { OnboardingCheckInsStep } from './OnboardingCheckInsStep';
+import { OnboardingSafetyPinStep } from './OnboardingSafetyPinStep';
+import { OnboardingCompleteStep } from './OnboardingCompleteStep';
+
+type EmergencyContact = {
+  name: string;
+  contactInfo: string;
+};
+
+type OnboardingStep = 'emergency' | 'circle' | 'location' | 'checkins' | 'safetypin' | 'complete';
 
 export function OnboardingScreen() {
   const t = useTheme();
   const { profile, refreshProfile, signOut } = useAuth();
-  const [name, setName] = useState(profile?.name ?? '');
-  const [phone, setPhone] = useState(profile?.phone ?? '');
-  const [bio, setBio] = useState(profile?.bio ?? '');
+  const [step, setStep] = useState<OnboardingStep>('emergency');
+  const [emergencyContacts, setEmergencyContacts] = useState<EmergencyContact[]>([]);
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -26,102 +37,176 @@ export function OnboardingScreen() {
     else if (res.url) await refreshProfile();
   };
 
+  const addEmergencyContact = () => {
+    setEmergencyContacts([...emergencyContacts, { name: '', contactInfo: '' }]);
+  };
+
+  const removeEmergencyContact = (index: number) => {
+    setEmergencyContacts(emergencyContacts.filter((_, i) => i !== index));
+  };
+
+  const updateEmergencyContact = (index: number, field: 'name' | 'contactInfo', value: string) => {
+    const updated = [...emergencyContacts];
+    updated[index] = { ...updated[index], [field]: value };
+    setEmergencyContacts(updated);
+  };
+
   const save = async () => {
     if (!profile) return;
-    if (!name.trim()) {
-      setErr('Name is required');
-      return;
-    }
     setBusy(true);
     setErr(null);
-    const { error } = await supabase
-      .from('profiles')
-      .update({
-        name: name.trim(),
-        phone: phone.trim() || null,
-        bio: bio.trim() || null,
-        onboarded: true,
-      })
-      .eq('id', profile.id);
-    setBusy(false);
-    if (error) {
-      setErr(error.message);
-      return;
+
+    try {
+      // Update profile to mark emergency contacts as complete
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({ onboarded: false })  // Keep as false, will be true when all steps done
+        .eq('id', profile.id);
+
+      if (profileError) {
+        setErr(profileError.message);
+        setBusy(false);
+        return;
+      }
+
+      // Save emergency contacts
+      if (emergencyContacts.length > 0) {
+        const contactsToInsert = emergencyContacts
+          .filter(c => c.name.trim() && c.contactInfo.trim())
+          .map((c, index) => ({
+            user_id: profile.id,
+            name: c.name.trim(),
+            contact_info: c.contactInfo.trim(),
+            priority: index + 1,
+          }));
+
+        if (contactsToInsert.length > 0) {
+          const { error: contactsError } = await supabase
+            .from('emergency_contacts')
+            .insert(contactsToInsert);
+
+          if (contactsError) {
+            setErr(contactsError.message);
+            setBusy(false);
+            return;
+          }
+        }
+      }
+
+      await refreshProfile();
+      setStep('circle');
+    } catch (e: any) {
+      setErr(e?.message ?? String(e));
     }
-    await refreshProfile();
+
+    setBusy(false);
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={{ flex: 1, backgroundColor: t.colors.ivoryBg }}
-    >
-      <ScrollView contentContainerStyle={{ padding: t.spacing.pageH, paddingTop: 70 }} keyboardShouldPersistTaps="handled">
-        <View style={{ alignItems: 'center', marginBottom: 22 }}>
-          <Pressable onPress={onPickAvatar} disabled={uploading}>
-            <Avatar name={name || profile?.email || '?'} size={92} ring photoUri={profile?.avatar_url ?? undefined} />
-          </Pressable>
-          <Text variant="small" weight="semibold" color={t.colors.gold700} style={{ marginTop: 10 }}>
-            {uploading ? 'Uploading…' : profile?.avatar_url ? 'Change photo' : 'Add a photo'}
-          </Text>
-        </View>
+    <>
+      {step === 'emergency' ? (
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{ flex: 1, backgroundColor: t.colors.ivoryBg }}
+        >
+          <ScrollView contentContainerStyle={{ padding: t.spacing.pageH, paddingTop: 70 }} keyboardShouldPersistTaps="handled">
+            <View style={{ alignItems: 'center', marginBottom: 22 }}>
+              <Pressable onPress={onPickAvatar} disabled={uploading}>
+                <Avatar name={profile?.email || '?'} size={92} ring photoUri={profile?.avatar_url ?? undefined} />
+              </Pressable>
+              <Text variant="small" weight="semibold" color={t.colors.gold700} style={{ marginTop: 10 }}>
+                {uploading ? 'Uploading…' : profile?.avatar_url ? 'Change photo' : 'Add a photo'}
+              </Text>
+            </View>
 
-        <Eyebrow style={{ marginBottom: 6 }}>WELCOME</Eyebrow>
-        <Text variant="displayH1" style={{ marginBottom: 8 }}>
-          Tell us who's{' '}
-          <Text variant="displayH1" italic accent>
-            watching.
-          </Text>
-        </Text>
-        <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 22 }}>
-          This is what your circle sees. You can change anything later in Profile.
-        </Text>
+            <Eyebrow style={{ marginBottom: 6 }}>WELCOME</Eyebrow>
+            <Text variant="displayH1" style={{ marginBottom: 8 }}>
+              Set up your{' '}
+              <Text variant="displayH1" italic accent>
+                circle.
+              </Text>
+            </Text>
+            <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 22 }}>
+              Add emergency contacts. List them by priority – who to call first.
+            </Text>
 
-        <Eyebrow style={{ marginBottom: 6 }}>NAME *</Eyebrow>
-        <TextInput
-          value={name}
-          onChangeText={setName}
-          placeholder="Elin"
-          placeholderTextColor={t.colors.inkMute}
-          autoCapitalize="words"
-          style={inputStyle(t)}
+            {emergencyContacts.map((contact, index) => (
+              <View key={index} style={{ marginBottom: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: t.colors.hairline }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <Eyebrow>CONTACT {index + 1}</Eyebrow>
+                  {emergencyContacts.length > 1 && (
+                    <Pressable onPress={() => removeEmergencyContact(index)}>
+                      <Text variant="small" color={t.colors.crimson} weight="semibold">
+                        Remove
+                      </Text>
+                    </Pressable>
+                  )}
+                </View>
+                <TextInput
+                  value={contact.name}
+                  onChangeText={(val) => updateEmergencyContact(index, 'name', val)}
+                  placeholder="Name or relation (e.g. Mom)"
+                  placeholderTextColor={t.colors.inkMute}
+                  autoCapitalize="words"
+                  style={inputStyle(t)}
+                />
+                <TextInput
+                  value={contact.contactInfo}
+                  onChangeText={(val) => updateEmergencyContact(index, 'contactInfo', val)}
+                  placeholder="Phone or contact info"
+                  placeholderTextColor={t.colors.inkMute}
+                  keyboardType="phone-pad"
+                  style={inputStyle(t)}
+                />
+              </View>
+            ))}
+
+            <PillButton variant="ghost" block onPress={addEmergencyContact} style={{ marginBottom: 18 }}>
+              <Text variant="small" weight="semibold" color={t.colors.gold700}>
+                + Add emergency contact
+              </Text>
+            </PillButton>
+
+            {err && (
+              <Text variant="small" color={t.colors.crimson} style={{ marginBottom: 10 }}>
+                {err}
+              </Text>
+            )}
+
+            <PillButton size="lg" block onPress={save} disabled={busy}>
+              {busy ? 'Saving…' : 'Next'}
+            </PillButton>
+
+            <PillButton variant="ghost" block style={{ marginTop: 8 }} onPress={signOut}>
+              Sign out
+            </PillButton>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      ) : step === 'circle' ? (
+        <OnboardingCircleStep 
+          onComplete={() => setStep('location')} 
         />
-
-        <Eyebrow style={{ marginBottom: 6 }}>PHONE (OPTIONAL)</Eyebrow>
-        <TextInput
-          value={phone}
-          onChangeText={setPhone}
-          placeholder="070-555 23 18"
-          placeholderTextColor={t.colors.inkMute}
-          keyboardType="phone-pad"
-          style={inputStyle(t)}
+      ) : step === 'location' ? (
+        <OnboardingLocationStep 
+          onComplete={() => setStep('checkins')} 
         />
-
-        <Eyebrow style={{ marginBottom: 6 }}>SHORT BIO (OPTIONAL)</Eyebrow>
-        <TextInput
-          value={bio}
-          onChangeText={setBio}
-          placeholder="Where you usually are. What you do."
-          placeholderTextColor={t.colors.inkMute}
-          multiline
-          style={[inputStyle(t), { minHeight: 80, borderRadius: t.radii.md, paddingTop: 14 }]}
+      ) : step === 'checkins' ? (
+        <OnboardingCheckInsStep 
+          onComplete={() => setStep('safetypin')} 
         />
-
-        {err && (
-          <Text variant="small" color={t.colors.crimson} style={{ marginBottom: 10 }}>
-            {err}
-          </Text>
-        )}
-
-        <PillButton size="lg" block onPress={save} disabled={busy || !name.trim()}>
-          {busy ? 'Saving…' : 'Continue'}
-        </PillButton>
-
-        <PillButton variant="ghost" block style={{ marginTop: 8 }} onPress={signOut}>
-          Sign out
-        </PillButton>
-      </ScrollView>
-    </KeyboardAvoidingView>
+      ) : step === 'safetypin' ? (
+        <OnboardingSafetyPinStep 
+          onComplete={() => setStep('complete')} 
+        />
+      ) : step === 'complete' ? (
+        <OnboardingCompleteStep 
+          onComplete={() => {
+            // Onboarding is complete, user will be auto-logged in and redirected
+            refreshProfile();
+          }} 
+        />
+      ) : null}
+    </>
   );
 }
 

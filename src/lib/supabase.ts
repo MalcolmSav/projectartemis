@@ -24,6 +24,7 @@ export type Profile = {
   id: string;
   email: string;
   name: string | null;
+  username: string | null;
   phone: string | null;
   bio: string | null;
   avatar_url: string | null;

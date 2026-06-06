@@ -9,6 +9,7 @@ import { useAuth } from '../state/Auth';
 import { supabase } from '../lib/supabase';
 import { palette } from '../theme/tokens';
 
+const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 const MONTHS_LONG = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
@@ -383,7 +384,7 @@ export function CalendarScreen() {
         }}
       />
 
-      <CalendarShareSheet open={shareOpen} onClose={() => setShareOpen(false)} />
+      <CalendarShareSheet open={shareOpen} onClose={() => { setShareOpen(false); refresh(); }} />
     </View>
   );
 }

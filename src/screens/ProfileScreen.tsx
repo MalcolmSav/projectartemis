@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { ScrollView, View, Pressable, TextInput, Alert, RefreshControl } from 'react-native';
+import { ScrollView, View, Pressable, TextInput, Alert, RefreshControl, Linking } from 'react-native';
 import { TopBar, Text, Eyebrow, Avatar, Card, Divider, PillButton, BottomSheet } from '../components';
 import { ArtemisMark, IconLock } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
 import { useAuth } from '../state/Auth';
 import { useEvents } from '../hooks/useEvents';
+import { useEmergencyContacts } from '../hooks/useEmergencyContacts';
 import { supabase } from '../lib/supabase';
 import { pickAndUploadAvatar } from '../lib/avatar';
 import { getPin, setPin, isDefaultPin } from '../lib/pin';
@@ -14,6 +15,7 @@ export function ProfileScreen() {
   const t = useTheme();
   const { profile, signOut, refreshProfile } = useAuth();
   const { events } = useEvents();
+  const { contacts } = useEmergencyContacts(profile?.id);
   const [editOpen, setEditOpen] = useState(false);
 
   const display = profile?.name?.trim() || profile?.email?.split('@')[0] || '—';
@@ -56,6 +58,11 @@ export function ProfileScreen() {
           >
             {display}
           </Text>
+          {profile?.username && (
+            <Text variant="small" color={t.colors.inkMute} style={{ marginTop: 2 }}>
+              @{profile.username}
+            </Text>
+          )}
           <Text variant="small" color={t.colors.inkSoft} style={{ marginTop: 4, textAlign: 'center' }}>
             {profile?.bio?.trim() || profile?.email}
           </Text>
@@ -88,6 +95,32 @@ export function ProfileScreen() {
             </>
           ) : null}
         </Card>
+
+        {contacts.length > 0 && (
+          <>
+            <Eyebrow style={{ marginBottom: 8 }}>EMERGENCY CONTACTS</Eyebrow>
+            <Card style={{ marginBottom: 18 }}>
+              {contacts.map((contact, i) => (
+                <View key={contact.id}>
+                  <View>
+                    <Text variant="meta" color={t.colors.inkMute}>
+                      {contact.priority === 1 ? '🚨 CALL FIRST' : `CONTACT ${contact.priority}`}
+                    </Text>
+                    <Text variant="body" weight="semibold" style={{ marginTop: 4 }}>
+                      {contact.name}
+                    </Text>
+                    <Pressable onPress={() => Linking.openURL(`tel:${contact.contact_info}`)}>
+                      <Text variant="small" color={t.colors.gold700}>
+                        {contact.contact_info}
+                      </Text>
+                    </Pressable>
+                  </View>
+                  {i < contacts.length - 1 && <Divider style={{ marginVertical: 10 }} />}
+                </View>
+              ))}
+            </Card>
+          </>
+        )}
 
         <Eyebrow style={{ marginBottom: 8 }}>SAFETY PIN</Eyebrow>
         <Pressable onPress={() => setPinOpen(true)}>
@@ -189,8 +222,16 @@ export function ProfileScreen() {
                   text: 'Delete',
                   style: 'destructive',
                   onPress: async () => {
-                    await supabase.rpc('delete_my_account');
-                    await signOut();
+                    try {
+                      const { error } = await supabase.rpc('delete_my_account');
+                      if (error) {
+                        Alert.alert('Delete failed', error.message);
+                        return;
+                      }
+                      await signOut();
+                    } catch (err: any) {
+                      Alert.alert('Delete failed', err?.message ?? String(err));
+                    }
                   },
                 },
               ],

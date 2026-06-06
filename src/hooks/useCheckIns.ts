@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase, Profile } from '../lib/supabase';
 import { useAuth } from '../state/Auth';
 
@@ -19,11 +19,19 @@ export interface PendingRequest extends CheckIn {
 
 const WELLNESS_TIMEOUT_MS = 30 * 60 * 1000; // 30 min
 
+export interface FriendAlarm {
+  profile: Profile | null;
+  checkIn: CheckIn;
+}
+
 export function useCheckIns() {
   const { user } = useAuth();
   const [latestByUser, setLatestByUser] = useState<Record<string, CheckIn>>({});
   const [pendingForMe, setPendingForMe] = useState<PendingRequest | null>(null);
+  const [friendAlarm, setFriendAlarm] = useState<FriendAlarm | null>(null);
   const [loading, setLoading] = useState(true);
+  // Track which alarm IDs we've already surfaced so we don't re-alert on every refresh
+  const shownAlarmIds = useRef<Set<string>>(new Set());
 
   const refresh = useCallback(async () => {
     if (!user) return;
@@ -69,6 +77,39 @@ export function useCheckIns() {
       }
     }
     setPendingForMe(chosen);
+
+    // Detect if a friend I sent a wellness request to has responded with an alarm
+    const { data: mySent } = await supabase
+      .from('check_ins')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('kind', 'wellness_request')
+      .gte('created_at', new Date(Date.now() - WELLNESS_TIMEOUT_MS).toISOString())
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    if (mySent && mySent.length > 0) {
+      for (const req of mySent as CheckIn[]) {
+        if (!req.target_id) continue;
+        const { data: alarms } = await supabase
+          .from('check_ins')
+          .select('*, profile:profiles!check_ins_user_id_fkey(*)')
+          .eq('user_id', req.target_id)
+          .eq('kind', 'alarm')
+          .gte('created_at', req.created_at)
+          .order('created_at', { ascending: false })
+          .limit(1);
+        if (alarms && alarms.length > 0) {
+          const alarm = alarms[0] as any;
+          if (!shownAlarmIds.current.has(alarm.id)) {
+            shownAlarmIds.current.add(alarm.id);
+            setFriendAlarm({ profile: alarm.profile ?? null, checkIn: alarm as CheckIn });
+          }
+          break;
+        }
+      }
+    }
+
     setLoading(false);
   }, [user]);
 
@@ -137,9 +178,13 @@ export function useCheckIns() {
     [user, refresh],
   );
 
+  const clearFriendAlarm = useCallback(() => setFriendAlarm(null), []);
+
   return {
     latestByUser,
     pendingForMe,
+    friendAlarm,
+    clearFriendAlarm,
     loading,
     refresh,
     recordOk,

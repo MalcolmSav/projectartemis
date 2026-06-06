@@ -131,7 +131,8 @@ export function CircleScreen() {
         ) : members.length === 0 ? (
           <View style={{ alignItems: 'center', paddingVertical: 40 }}>
             <Text variant="body" color={t.colors.inkSoft} style={{ textAlign: 'center', marginBottom: 18 }}>
-              Your circle is empty.{'\n'}Invite someone you trust.
+              Your circle is empty.
+              {'\n'}Invite someone you trust by sending an email invite.
             </Text>
             <PillButton onPress={() => setAddOpen(true)}>+ Invite by email</PillButton>
           </View>

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ScrollView, View, Pressable, ActivityIndicator, Linking, Alert } from 'react-native';
 import { useCheckIns } from '../hooks/useCheckIns';
+import { useEmergencyContacts } from '../hooks/useEmergencyContacts';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -26,6 +27,7 @@ export function CirclePersonScreen() {
   const [loading, setLoading] = useState(true);
   const [activity, setActivity] = useState<RecentCheckIn[]>([]);
   const { sendWellnessRequest } = useCheckIns();
+  const { contacts: emergencyContacts } = useEmergencyContacts(route.params.id);
 
   useEffect(() => {
     let cancelled = false;
@@ -150,6 +152,32 @@ export function CirclePersonScreen() {
           ) : null}
           {profile.bio ? <Row label="Bio" value={profile.bio} /> : null}
         </Card>
+
+        {emergencyContacts.length > 0 && (
+          <>
+            <Eyebrow style={{ marginTop: 22, marginBottom: 8 }}>🚨 EMERGENCY CONTACTS</Eyebrow>
+            <Card>
+              {emergencyContacts.map((contact, i) => (
+                <View key={contact.id}>
+                  <View>
+                    <Text variant="meta" color={t.colors.crimson} weight="semibold">
+                      {contact.priority === 1 ? 'CALL FIRST' : `CONTACT ${contact.priority}`}
+                    </Text>
+                    <Text variant="body" weight="semibold" style={{ marginTop: 4 }}>
+                      {contact.name}
+                    </Text>
+                    <Pressable onPress={() => Linking.openURL(`tel:${contact.contact_info}`)}>
+                      <Text variant="small" color={t.colors.gold700} style={{ marginTop: 2 }}>
+                        {contact.contact_info}
+                      </Text>
+                    </Pressable>
+                  </View>
+                  {i < emergencyContacts.length - 1 && <Divider style={{ marginVertical: 10 }} />}
+                </View>
+              ))}
+            </Card>
+          </>
+        )}
 
         {activity.length > 0 && (
           <>

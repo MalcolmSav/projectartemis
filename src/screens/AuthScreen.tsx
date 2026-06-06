@@ -12,19 +12,64 @@ export function AuthScreen() {
   const t = useTheme();
   const { signIn, signUp } = useAuth();
   const [mode, setMode] = useState<Mode>('signIn');
+  const [username, setUsername] = useState('');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
 
   const submit = async () => {
     setErr(null);
+    setMessage(null);
     setBusy(true);
+    const trimmedEmail = email.trim();
+    const trimmedUsername = username.trim();
+    const trimmedName = name.trim();
+    const trimmedPassword = password.trim();
+
+    if (mode === 'signUp') {
+      if (!trimmedUsername) {
+        setErr('Choose a username.');
+        setBusy(false);
+        return;
+      }
+      if (!/^[a-zA-Z0-9_]+$/.test(trimmedUsername)) {
+        setErr('Username can only include letters, numbers, and underscores.');
+        setBusy(false);
+        return;
+      }
+      if (!trimmedName) {
+        setErr('Enter your full name.');
+        setBusy(false);
+        return;
+      }
+      const { data: existing, error: lookupError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('username', trimmedUsername)
+        .maybeSingle();
+      if (lookupError) {
+        setErr('Unable to verify username availability.');
+        setBusy(false);
+        return;
+      }
+      if (existing) {
+        setErr('That username is already taken.');
+        setBusy(false);
+        return;
+      }
+    }
+
     const res =
-      mode === 'signIn' ? await signIn(email, password) : await signUp(email, password, name || email.split('@')[0]);
+      mode === 'signIn'
+        ? await signIn(trimmedEmail, trimmedPassword)
+        : await signUp(trimmedEmail, trimmedPassword, trimmedName, trimmedUsername);
     setBusy(false);
-    if (res.error) setErr(res.error);
+    if (res.error) {
+      setErr(res.error);
+    }
   };
 
   return (
@@ -61,11 +106,24 @@ export function AuthScreen() {
 
         {mode === 'signUp' && (
           <>
-            <Eyebrow style={{ marginBottom: 6 }}>NAME</Eyebrow>
+            <Eyebrow style={{ marginBottom: 6 }}>USERNAME</Eyebrow>
+            <Text variant="small" color={t.colors.inkMute} style={{ marginBottom: 10 }}>
+              How others will find and add you
+            </Text>
+            <TextInput
+              value={username}
+              onChangeText={setUsername}
+              placeholder="username"
+              placeholderTextColor={t.colors.inkMute}
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={inputStyle(t)}
+            />
+            <Eyebrow style={{ marginBottom: 6, marginTop: 18 }}>FULL NAME</Eyebrow>
             <TextInput
               value={name}
               onChangeText={setName}
-              placeholder="Your name"
+              placeholder="First and last name"
               placeholderTextColor={t.colors.inkMute}
               style={inputStyle(t)}
               autoCapitalize="words"
@@ -95,13 +153,27 @@ export function AuthScreen() {
           style={inputStyle(t)}
         />
 
-        {err && (
+        {err ? (
           <Text variant="small" color={t.colors.crimson} style={{ marginBottom: 10 }}>
             {err}
           </Text>
-        )}
+        ) : message ? (
+          <Text variant="small" color={t.colors.forest700} style={{ marginBottom: 10 }}>
+            {message}
+          </Text>
+        ) : null}
 
-        <PillButton size="lg" block onPress={submit} disabled={busy || !email || !password}>
+        <PillButton
+          size="lg"
+          block
+          onPress={submit}
+          disabled={
+            busy ||
+            !email.trim() ||
+            !password.trim() ||
+            (mode === 'signUp' && (!username.trim() || !name.trim()))
+          }
+        >
           {busy ? 'Working…' : mode === 'signIn' ? 'Sign in' : 'Create account'}
         </PillButton>
 
@@ -122,10 +194,16 @@ export function AuthScreen() {
                 return;
               }
               setBusy(true);
-              const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
+              const trimmedEmail = email.trim();
+              const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail);
               setBusy(false);
-              setErr(error ? error.message : null);
-              if (!error) setErr('Reset link sent — check your email.');
+              if (error) {
+                setErr(error.message);
+                setMessage(null);
+              } else {
+                setErr(null);
+                setMessage('Reset link sent — check your email.');
+              }
             }}
             style={{ marginTop: 12, alignItems: 'center' }}
           >

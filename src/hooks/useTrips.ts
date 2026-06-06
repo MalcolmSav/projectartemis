@@ -9,6 +9,7 @@ export interface Trip {
   eta: string | null;
   buddy_id: string | null;
   transport: string | null;
+  location_interval: number; // seconds between location updates
   started_at: string;
   ended_at: string | null;
   status: 'active' | 'arrived' | 'cancelled' | 'escalated';
@@ -47,7 +48,7 @@ export function useTrips() {
   }, [user, refresh]);
 
   const start = useCallback(
-    async (t: { destination: string; eta?: string; buddyId?: string | null; transport?: string }) => {
+    async (t: { destination: string; eta?: string; buddyId?: string | null; transport?: string; locationInterval?: number }) => {
       if (!user) return { error: 'Not signed in' };
       const { data, error } = await supabase
         .from('trips')
@@ -57,6 +58,7 @@ export function useTrips() {
           eta: t.eta ?? null,
           buddy_id: t.buddyId ?? null,
           transport: t.transport ?? null,
+          location_interval: t.locationInterval ?? 60,
         })
         .select()
         .single();
