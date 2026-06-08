@@ -2,7 +2,7 @@ import React from 'react';
 import { ScrollView, View, Pressable } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Text, Eyebrow, Avatar, Card, Toggle, Divider } from '../components';
-import { IconChevron, IconLocate, IconLock } from '../components/icons';
+import { IconChevron, IconLocate } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
 import { useAppState } from '../state/AppState';
 import { CIRCLE, ShareMode } from '../data/demo';
@@ -16,15 +16,11 @@ const MODES: { id: ShareMode; label: string; sub: string }[] = [
 export function LocationShareScreen() {
   const t = useTheme();
   const nav = useNavigation();
-  const { sharing, shareStartedAt, setSharing, shareMode, setShareMode, visibleTo, setVisibleTo, askPin } = useAppState();
+  const { sharing, shareStartedAt, setSharing, shareMode, setShareMode, visibleTo, setVisibleTo } = useAppState();
 
   const onMasterToggle = (next: boolean) => {
     if (next === sharing) return;
-    if (sharing && !next) {
-      askPin('Stop sharing location?', () => setSharing(false));
-    } else {
-      setSharing(next);
-    }
+    setSharing(next);
   };
 
   return (
@@ -59,9 +55,8 @@ export function LocationShareScreen() {
               </Text>
               {sharing && shareStartedAt && (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                  <IconLock size={11} gold />
                   <Text variant="meta" color={t.colors.inkMute}>
-                    PIN-protected · since {new Date(shareStartedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    Since {new Date(shareStartedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </Text>
                 </View>
               )}

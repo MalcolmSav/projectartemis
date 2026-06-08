@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import { View, TextInput, ScrollView, KeyboardAvoidingView, Platform, Pressable, Alert } from 'react-native';
-import { Text, Eyebrow, PillButton, Avatar } from '../components';
+import { Text, Eyebrow, PillButton, Avatar, Card } from '../components';
 import { useTheme } from '../theme/ThemeProvider';
 import { useAuth } from '../state/Auth';
 import { supabase } from '../lib/supabase';
 import { pickAndUploadAvatar } from '../lib/avatar';
 import { OnboardingCircleStep } from './OnboardingCircleStep';
-import { OnboardingLocationStep } from './OnboardingLocationStep';
-import { OnboardingCheckInsStep } from './OnboardingCheckInsStep';
-import { OnboardingSafetyPinStep } from './OnboardingSafetyPinStep';
+
+import { OnboardingFakeCallStep } from './OnboardingFakeCallStep';
+import { OnboardingCalendarStep } from './OnboardingCalendarStep';
+import { OnboardingTripModeStep } from './OnboardingTripModeStep';
 import { OnboardingCompleteStep } from './OnboardingCompleteStep';
 
 type EmergencyContact = {
@@ -16,12 +17,12 @@ type EmergencyContact = {
   contactInfo: string;
 };
 
-type OnboardingStep = 'emergency' | 'circle' | 'location' | 'checkins' | 'safetypin' | 'complete';
+type OnboardingStep = 'intro' | 'emergency' | 'circle' | 'calendar' | 'fakecall' | 'tripmode' | 'complete';
 
 export function OnboardingScreen() {
   const t = useTheme();
   const { profile, refreshProfile, signOut } = useAuth();
-  const [step, setStep] = useState<OnboardingStep>('emergency');
+  const [step, setStep] = useState<OnboardingStep>('intro');
   const [emergencyContacts, setEmergencyContacts] = useState<EmergencyContact[]>([]);
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -104,7 +105,57 @@ export function OnboardingScreen() {
 
   return (
     <>
-      {step === 'emergency' ? (
+      {step === 'intro' ? (
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{ flex: 1, backgroundColor: t.colors.ivoryBg }}
+        >
+          <ScrollView contentContainerStyle={{ flexGrow: 1, padding: t.spacing.pageH, paddingTop: 90 }} keyboardShouldPersistTaps="handled">
+            <View style={{ flex: 1, justifyContent: 'center' }}>
+              <Eyebrow style={{ marginBottom: 6 }}>WELCOME TO ARTEMIS</Eyebrow>
+              <Text variant="displayH1" style={{ marginBottom: 14 }}>
+                A softer way to feel{' '}
+                <Text variant="displayH1" italic accent>
+                  safer.
+                </Text>
+              </Text>
+              <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 22 }}>
+                Artemis helps you stay connected with trusted people when you are out, traveling, or need a quiet exit.
+                You can share your live location, set up emergency contacts, start a trip with a buddy, and schedule a
+                fake call for uncomfortable moments.
+              </Text>
+
+              <Card style={{ marginBottom: 24 }}>
+                <View style={{ gap: 12 }}>
+                  <Text variant="body" weight="semibold">
+                    During setup you will:
+                  </Text>
+                  <Text variant="small" color={t.colors.inkSoft}>
+                    Add emergency contacts who should be reached first.
+                  </Text>
+                  <Text variant="small" color={t.colors.inkSoft}>
+                    Build your circle of trusted people.
+                  </Text>
+                  <Text variant="small" color={t.colors.inkSoft}>
+                    Add moments where you may be hard to reach.
+                  </Text>
+                  <Text variant="small" color={t.colors.inkSoft}>
+                    Choose quick safety tools like fake call and trip mode.
+                  </Text>
+                </View>
+              </Card>
+
+              <PillButton size="lg" block onPress={() => setStep('emergency')}>
+                Start setup
+              </PillButton>
+
+              <PillButton variant="ghost" block style={{ marginTop: 8 }} onPress={signOut}>
+                Sign out
+              </PillButton>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      ) : step === 'emergency' ? (
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={{ flex: 1, backgroundColor: t.colors.ivoryBg }}
@@ -184,18 +235,18 @@ export function OnboardingScreen() {
         </KeyboardAvoidingView>
       ) : step === 'circle' ? (
         <OnboardingCircleStep 
-          onComplete={() => setStep('location')} 
+          onComplete={() => setStep('calendar')} 
         />
-      ) : step === 'location' ? (
-        <OnboardingLocationStep 
-          onComplete={() => setStep('checkins')} 
+      ) : step === 'calendar' ? (
+        <OnboardingCalendarStep
+          onComplete={() => setStep('fakecall')}
         />
-      ) : step === 'checkins' ? (
-        <OnboardingCheckInsStep 
-          onComplete={() => setStep('safetypin')} 
+      ) : step === 'fakecall' ? (
+        <OnboardingFakeCallStep 
+          onComplete={() => setStep('tripmode')} 
         />
-      ) : step === 'safetypin' ? (
-        <OnboardingSafetyPinStep 
+      ) : step === 'tripmode' ? (
+        <OnboardingTripModeStep 
           onComplete={() => setStep('complete')} 
         />
       ) : step === 'complete' ? (

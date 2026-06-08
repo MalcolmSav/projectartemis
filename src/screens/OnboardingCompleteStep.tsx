@@ -40,7 +40,7 @@ export function OnboardingCompleteStep({ onComplete }: { onComplete: () => void 
           </Text>
         </Text>
         <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 32, textAlign: 'center' }}>
-          Your circle is ready to keep you safe and connected. Start by checking in or adding more people.
+          Your circle is ready to keep you safe and connected. You now have fake call and trip mode for extra safety.
         </Text>
 
         <Card style={{ marginBottom: 32, width: '100%' }}>
@@ -54,16 +54,16 @@ export function OnboardingCompleteStep({ onComplete }: { onComplete: () => void 
               <Text variant="body" weight="semibold">Circle members added</Text>
             </View>
             <View style={{ flexDirection: 'row', gap: 8 }}>
-              <Text style={{ fontSize: 20 }}>📍</Text>
-              <Text variant="body" weight="semibold">Location sharing configured</Text>
+              <Text style={{ fontSize: 20 }}>✅</Text>
+              <Text variant="body" weight="semibold">Hard-to-reach events reviewed</Text>
             </View>
             <View style={{ flexDirection: 'row', gap: 8 }}>
-              <Text style={{ fontSize: 20 }}>⏱️</Text>
-              <Text variant="body" weight="semibold">Check-ins scheduled</Text>
+              <Text style={{ fontSize: 20 }}>📞</Text>
+              <Text variant="body" weight="semibold">Fake call ready</Text>
             </View>
             <View style={{ flexDirection: 'row', gap: 8 }}>
-              <Text style={{ fontSize: 20 }}>🔐</Text>
-              <Text variant="body" weight="semibold">Safety PIN created</Text>
+              <Text style={{ fontSize: 20 }}>🚗</Text>
+              <Text variant="body" weight="semibold">Trip mode configured</Text>
             </View>
           </View>
         </Card>
@@ -73,13 +73,13 @@ export function OnboardingCompleteStep({ onComplete }: { onComplete: () => void 
             What's next?
           </Text>
           <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 8 }}>
-            • Check in regularly so your circle knows you're safe
+            • Use fake call to exit uncomfortable situations
+          </Text>
+          <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 8 }}>
+            • Start trip mode when traveling alone or at night
           </Text>
           <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 8 }}>
             • Add more trusted people to your circle anytime
-          </Text>
-          <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 8 }}>
-            • Set up calendar events and trips for visibility
           </Text>
           <Text variant="small" color={t.colors.inkSoft}>
             • Adjust settings in your Profile as needed

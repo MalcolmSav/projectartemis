@@ -24,7 +24,7 @@ import { ThemeProvider, useTheme } from './src/theme/ThemeProvider';
 import { AppStateProvider } from './src/state/AppState';
 import { AuthProvider, useAuth } from './src/state/Auth';
 import { RootNavigator } from './src/navigation/RootNavigator';
-import { PinModal } from './src/components/PinModal';
+
 import { AuthScreen } from './src/screens/AuthScreen';
 import { OnboardingScreen } from './src/screens/OnboardingScreen';
 import { usePresenceBroadcast } from './src/hooks/usePresenceBroadcast';
@@ -67,7 +67,7 @@ function GatedApp() {
   return (
     <NavigationContainer theme={navTheme}>
       <RootNavigator />
-      <PinModal />
+
     </NavigationContainer>
   );
 }
