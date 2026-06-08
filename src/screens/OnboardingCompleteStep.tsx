@@ -28,7 +28,7 @@ export function OnboardingCompleteStep({ onComplete }: { onComplete: () => void 
       style={{ flex: 1, backgroundColor: t.colors.ivoryBg }}
     >
       <ScrollView contentContainerStyle={{ padding: t.spacing.pageH, paddingTop: 100, alignItems: 'center' }} keyboardShouldPersistTaps="handled">
-        <Text style={{ fontFamily: t.type.display, fontSize: 48, marginBottom: 12, textAlign: 'center' }}>
+        <Text style={{ fontFamily: t.type.display, fontSize: 48, lineHeight: 64, height: 64, marginBottom: 12, textAlign: 'center' }}>
           🎉
         </Text>
 
@@ -93,3 +93,4 @@ export function OnboardingCompleteStep({ onComplete }: { onComplete: () => void 
     </KeyboardAvoidingView>
   );
 }
+

@@ -1,37 +1,16 @@
 import React, { useState } from 'react';
-import { View, ScrollView, Pressable } from 'react-native';
+import { View, ScrollView } from 'react-native';
 import { Text, Eyebrow, PillButton, Card } from '../components';
 import { useTheme } from '../theme/ThemeProvider';
-import { useAuth } from '../state/Auth';
-import { supabase } from '../lib/supabase';
 
 export function OnboardingFakeCallStep({ onComplete }: { onComplete: () => void }) {
   const t = useTheme();
-  const { profile, refreshProfile } = useAuth();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const save = async () => {
-    if (!profile) return;
     setBusy(true);
     setErr(null);
-
-    try {
-      // Mark fake call tutorial as completed
-      const { error } = await supabase
-        .from('profiles')
-        .update({ fake_call_tutorial_completed: true })
-        .eq('id', profile.id);
-
-      if (error) {
-        console.error('Fake call tutorial update error:', error);
-      } else {
-        await refreshProfile();
-      }
-    } catch (e: any) {
-      console.error('Save error:', e);
-    }
-
     setBusy(false);
     onComplete();
   };
