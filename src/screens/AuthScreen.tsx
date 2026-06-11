@@ -1,16 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, TextInput, Pressable, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
+import * as Google from 'expo-auth-session/providers/google';
 import { Text, Eyebrow, PillButton } from '../components';
-import { ArtemisMark } from '../components/icons';
+import { ArtemisMark, GoogleLogo } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
 import { useAuth } from '../state/Auth';
 import { supabase } from '../lib/supabase';
+
+WebBrowser.maybeCompleteAuthSession();
 
 type Mode = 'signIn' | 'signUp';
 
 export function AuthScreen() {
   const t = useTheme();
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, signInWithGoogleToken } = useAuth();
   const [mode, setMode] = useState<Mode>('signIn');
   const [username, setUsername] = useState('');
   const [name, setName] = useState('');
@@ -19,6 +23,50 @@ export function AuthScreen() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+
+  const [_request, googleResponse, promptGoogleAsync] = Google.useAuthRequest({
+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+  });
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    if (googleResponse?.type === 'success') {
+      const idToken = googleResponse.params?.id_token;
+      if (!idToken) {
+        setErr('Google sign-in failed — no token returned.');
+        setBusy(false);
+        return;
+      }
+      signInWithGoogleToken(idToken).then((res) => {
+        setBusy(false);
+        if (res.error) setErr(res.error);
+      });
+    } else if (googleResponse?.type === 'error') {
+      setErr('Google sign-in was cancelled or failed.');
+      setBusy(false);
+    } else if (googleResponse?.type === 'dismiss') {
+      setBusy(false);
+    }
+  }, [googleResponse]);
+
+  const handleGooglePress = async () => {
+    setErr(null);
+    setBusy(true);
+    if (Platform.OS === 'web') {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: window.location.origin },
+      });
+      if (error) {
+        setErr(error.message);
+        setBusy(false);
+      }
+    } else {
+      promptGoogleAsync();
+    }
+  };
 
   const submit = async () => {
     setErr(null);
@@ -103,6 +151,24 @@ export function AuthScreen() {
             </>
           )}
         </Text>
+
+        <PillButton
+          variant="secondary"
+          size="lg"
+          block
+          disabled={busy}
+          iconLeft={<GoogleLogo size={18} />}
+          onPress={handleGooglePress}
+          style={{ marginBottom: 20 }}
+        >
+          Continue with Google
+        </PillButton>
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20, gap: 10 }}>
+          <View style={{ flex: 1, height: 1, backgroundColor: t.colors.hairline }} />
+          <Text variant="small" color={t.colors.inkMute}>or</Text>
+          <View style={{ flex: 1, height: 1, backgroundColor: t.colors.hairline }} />
+        </View>
 
         {mode === 'signUp' && (
           <>

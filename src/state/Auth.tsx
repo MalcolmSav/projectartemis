@@ -9,6 +9,7 @@ interface AuthValue {
   profile: Profile | null;
   signIn: (email: string, password: string) => Promise<{ error?: string }>;
   signUp: (email: string, password: string, name: string, username: string) => Promise<{ error?: string }>;
+  signInWithGoogleToken: (idToken: string) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -72,6 +73,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return error ? { error: error.message } : {};
   };
 
+  const signInWithGoogleToken: AuthValue['signInWithGoogleToken'] = async (idToken) => {
+    const { error } = await supabase.auth.signInWithIdToken({ provider: 'google', token: idToken });
+    return error ? { error: error.message } : {};
+  };
+
   const signOut = async () => {
     const { error } = await supabase.auth.signOut();
     if (!error) {
@@ -88,6 +94,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       profile,
       signIn,
       signUp,
+      signInWithGoogleToken,
       signOut,
       refreshProfile,
     }),
