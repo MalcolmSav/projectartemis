@@ -53,7 +53,10 @@ export function useEvents() {
     if (!user) return;
     const topic = `events:${user.id}:${Math.random().toString(36).slice(2)}`;
     const ch = supabase.channel(topic);
-    ch.on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, refresh).subscribe();
+    // Re-fetch when any event changes OR when a calendar share is granted/revoked
+    ch.on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, refresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'calendar_shares' }, refresh)
+      .subscribe();
     return () => {
       supabase.removeChannel(ch);
     };

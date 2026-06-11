@@ -8,5 +8,4 @@ export { Toggle } from './Toggle';
 export { TopBar } from './TopBar';
 export * as Icons from './icons';
 export { BottomSheet } from './BottomSheet';
-export { PinModal } from './PinModal';
 export { SectionTitle, Divider, StatusPill, CircleCard, QuickAction, EventCard, Row } from './helpers';

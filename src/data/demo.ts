@@ -45,7 +45,6 @@ export const USER = {
   fullName: 'Elin Bergström',
   bio: 'Karolinska, late shifts. Runs in Djurgården.',
   phone: '070-555 23 18',
-  pin: '4729',
 };
 
 export const CIRCLE: CirclePerson[] = [

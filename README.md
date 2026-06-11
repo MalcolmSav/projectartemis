@@ -10,10 +10,10 @@ Port of the Artemis safety & wellness app design (`../design_handoff_artemis/`) 
 | Design tokens (colors, type, spacing, radii, shadows, motion) | `src/theme/tokens.ts` |
 | Theme provider (light/night, hue) + `useTheme()` | `src/theme/ThemeProvider.tsx` |
 | Demo data (`USER`, `CIRCLE`, `INITIAL_EVENTS`, `INITIAL_REPORTS`) | `src/data/demo.ts` |
-| Global app state (sharing, reports, events, calendarShares, trip, fakeCall, pinAsk) | `src/state/AppState.tsx` |
+| Global app state (sharing, reports, events, calendarShares, trip, fakeCall) | `src/state/AppState.tsx` |
 | Icons + brand mark (`react-native-svg`) | `src/components/icons/index.tsx` |
 | Primitives — Avatar, StatusDot, PillButton, Card, Toggle, TopBar, Text/Eyebrow | `src/components/` |
-| Composite — BottomSheet, PinModal, CircleCard, QuickAction, EventCard, StatusPill, Row | `src/components/` |
+| Composite - BottomSheet, CircleCard, QuickAction, EventCard, StatusPill, Row | `src/components/` |
 | Bottom tab nav + root stack (with modal screens) | `src/navigation/` |
 
 ### Screens
@@ -24,8 +24,8 @@ Port of the Artemis safety & wellness app design (`../design_handoff_artemis/`) 
 | Circle list | `src/screens/CircleScreen.tsx` | Person rows + secondary contacts |
 | Person profile | `src/screens/CirclePersonScreen.tsx` | Hero ringed avatar, 3 actions, details card, secondary contact |
 | Calendar | `src/screens/CalendarScreen.tsx` | Month grid (today highlighted, event dots), upcoming list, share-sheet (per-person granularity none/checkin/full) |
-| Profile | `src/screens/ProfileScreen.tsx` | Emergency contacts, safety PIN, shared calendar, day/night mode toggle |
-| Location Share | `src/screens/LocationShareScreen.tsx` | Master toggle (PIN-gated when turning OFF), 3 mode radios, per-person visibility |
+| Profile | `src/screens/ProfileScreen.tsx` | Emergency contacts, shared calendar, day/night mode toggle |
+| Location Share | `src/screens/LocationShareScreen.tsx` | Master toggle, 3 mode radios, per-person visibility |
 | Wellness Incoming | `src/screens/WellnessIncomingScreen.tsx` | 30s auto-escalate gold progress bar, 3-tier response (good / need help / alarm) |
 | Alarm Active | `src/screens/AlarmActiveScreen.tsx` | Crimson-tinted background, pulsing red field, recording indicator with animated 5-bar waveform + mm:ss timer, notified circle list |
 | Trip Setup | `src/screens/TripSetupScreen.tsx` | Destination, ETA, 4-emoji transport row, buddy radio list |
@@ -35,7 +35,6 @@ Port of the Artemis safety & wellness app design (`../design_handoff_artemis/`) 
 | Fake Call On-Call | `src/screens/FakeCallOnCallScreen.tsx` | mm:ss timer, "this is a fake call" banner, end button |
 
 ### Behaviors implemented
-- **PIN gate** — turning OFF location sharing prompts the PIN modal. Demo PIN: `4729`. Wrong PIN → red borders, input clears.
 - **Wellness check auto-escalate** — 30s countdown on the gold progress bar; auto-dismisses at 0s.
 - **Reports persist in memory** — submitting a new report from the map sheet prepends it to the list, visible immediately.
 - **Trip progress** — ticks +1.5% every 1.5s in the prototype.
@@ -64,7 +63,6 @@ These are spec-faithful UI mocks, but the underlying integrations are stubs:
 | Audio recording (Alarm) | Animated waveform + mm:ss timer, no audio captured | `expo-av` `Audio.Recording` + microphone permission flow |
 | Trip Mode escalation | Progress bar advances synthetically | `expo-location` background updates + geofence + local notifications |
 | Fake Call | In-app fullscreen overlay | iOS CallKit (real lockscreen call), Android full-screen intent |
-| PIN storage | In-memory const `4729` | `expo-secure-store` (Keychain / Keystore) |
 | Push notifications | None | `expo-notifications` for incoming wellness check / trip miss |
 
 ## Architecture notes
@@ -85,9 +83,10 @@ These are spec-faithful UI mocks, but the underlying integrations are stubs:
 
 ## Roadmap
 
-- Persistence (`AsyncStorage` for events/reports, `SecureStore` for PIN)
+- Persistence (`AsyncStorage` for events/reports)
 - Real map SDK + geolocation
 - `expo-av` audio recording
 - `expo-notifications` for the 30s wellness check + trip miss
 - Localization (Swedish strings already in demo data — extract to i18n)
 - Onboarding flow (not in design yet)
+

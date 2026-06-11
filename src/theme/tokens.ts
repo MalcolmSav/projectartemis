@@ -2,12 +2,12 @@
 // Gold stays constant across themes (Artemis signature).
 
 export const palette = {
-  // Forest
-  forest900: '#1F3A0E',
-  forest700: '#2D5016',
-  forest500: '#4A7C2F',
-  forest300: '#88A86B',
-  forest100: '#D5E2C2',
+  // Purple (formerly Forest)
+  forest900: '#3A1F4A',
+  forest700: '#502D61',
+  forest500: '#7C4A99',
+  forest300: '#A888B9',
+  forest100: '#E2D5E8',
 
   // Gold (theme-invariant)
   gold700: '#A57A1F',
@@ -70,7 +70,7 @@ export const lightColors: ColorTokens = {
   ink: '#1B1F16',
   inkSoft: '#4A5240',
   inkMute: '#8A8E7E',
-  hairline: 'rgba(45, 80, 22, 0.10)',
+  hairline: 'rgba(80, 45, 97, 0.10)',
 
   gold700: palette.gold700,
   gold500: palette.gold500,
@@ -85,16 +85,16 @@ export const lightColors: ColorTokens = {
 };
 
 export const nightColors: ColorTokens = {
-  ivoryBg: '#0F1A08',
-  moonlight: '#16240D',
-  parchment: '#1C2D11',
+  ivoryBg: '#121118',
+  moonlight: '#1A171F',
+  parchment: '#201C27',
 
-  // Forest lightened slightly per night spec
-  forest900: '#2A4A1A',
-  forest700: '#3D6A1F',
-  forest500: '#5C9438',
-  forest300: '#A1C285',
-  forest100: '#1F3010',
+  // Purple lightened for night mode
+  forest900: '#3D3546',
+  forest700: '#564A63',
+  forest500: '#6D5C7E',
+  forest300: '#8B7D9F',
+  forest100: '#2A2232',
 
   ink: '#F2EFE3',
   inkSoft: '#C8CDB6',

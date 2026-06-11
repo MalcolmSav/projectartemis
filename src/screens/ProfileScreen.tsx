@@ -1,28 +1,24 @@
 import React, { useState } from 'react';
-import { ScrollView, View, Pressable, TextInput, Alert, RefreshControl } from 'react-native';
+import { ScrollView, View, Pressable, TextInput, Alert, RefreshControl, Linking } from 'react-native';
 import { TopBar, Text, Eyebrow, Avatar, Card, Divider, PillButton, BottomSheet } from '../components';
-import { ArtemisMark, IconLock } from '../components/icons';
+import { ArtemisMark } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
 import { useAuth } from '../state/Auth';
 import { useEvents } from '../hooks/useEvents';
+import { useEmergencyContacts } from '../hooks/useEmergencyContacts';
 import { supabase } from '../lib/supabase';
 import { pickAndUploadAvatar } from '../lib/avatar';
-import { getPin, setPin, isDefaultPin } from '../lib/pin';
 import { palette } from '../theme/tokens';
 
 export function ProfileScreen() {
   const t = useTheme();
   const { profile, signOut, refreshProfile } = useAuth();
   const { events } = useEvents();
+  const { contacts } = useEmergencyContacts(profile?.id);
   const [editOpen, setEditOpen] = useState(false);
 
   const display = profile?.name?.trim() || profile?.email?.split('@')[0] || '—';
   const [uploading, setUploading] = useState(false);
-  const [pinOpen, setPinOpen] = useState(false);
-  const [pinIsDefault, setPinIsDefault] = useState(true);
-  React.useEffect(() => {
-    isDefaultPin().then(setPinIsDefault);
-  }, [pinOpen]);
 
   const onPickAvatar = async () => {
     if (!profile) return;
@@ -56,6 +52,11 @@ export function ProfileScreen() {
           >
             {display}
           </Text>
+          {profile?.username && (
+            <Text variant="small" color={t.colors.inkMute} style={{ marginTop: 2 }}>
+              @{profile.username}
+            </Text>
+          )}
           <Text variant="small" color={t.colors.inkSoft} style={{ marginTop: 4, textAlign: 'center' }}>
             {profile?.bio?.trim() || profile?.email}
           </Text>
@@ -89,24 +90,31 @@ export function ProfileScreen() {
           ) : null}
         </Card>
 
-        <Eyebrow style={{ marginBottom: 8 }}>SAFETY PIN</Eyebrow>
-        <Pressable onPress={() => setPinOpen(true)}>
-          <Card style={{ marginBottom: 18 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <View style={{ flex: 1 }}>
-                <Text variant="body" weight="semibold" style={{ letterSpacing: 6 }}>
-                  ••••
-                </Text>
-                <Text variant="meta" color={pinIsDefault ? t.colors.crimson : t.colors.inkMute}>
-                  {pinIsDefault ? 'Still using demo PIN — tap to change' : 'PIN set'}
-                </Text>
-              </View>
-              <Text variant="small" weight="semibold" color={t.colors.gold700}>
-                Change
-              </Text>
-            </View>
-          </Card>
-        </Pressable>
+        {contacts.length > 0 && (
+          <>
+            <Eyebrow style={{ marginBottom: 8 }}>EMERGENCY CONTACTS</Eyebrow>
+            <Card style={{ marginBottom: 18 }}>
+              {contacts.map((contact, i) => (
+                <View key={contact.id}>
+                  <View>
+                    <Text variant="meta" color={t.colors.inkMute}>
+                      {contact.priority === 1 ? '🚨 CALL FIRST' : `CONTACT ${contact.priority}`}
+                    </Text>
+                    <Text variant="body" weight="semibold" style={{ marginTop: 4 }}>
+                      {contact.name}
+                    </Text>
+                    <Pressable onPress={() => Linking.openURL(`tel:${contact.contact_info}`)}>
+                      <Text variant="small" color={t.colors.gold700}>
+                        {contact.contact_info}
+                      </Text>
+                    </Pressable>
+                  </View>
+                  {i < contacts.length - 1 && <Divider style={{ marginVertical: 10 }} />}
+                </View>
+              ))}
+            </Card>
+          </>
+        )}
 
         {events.length > 0 && (
           <>
@@ -189,8 +197,16 @@ export function ProfileScreen() {
                   text: 'Delete',
                   style: 'destructive',
                   onPress: async () => {
-                    await supabase.rpc('delete_my_account');
-                    await signOut();
+                    try {
+                      const { error } = await supabase.rpc('delete_my_account');
+                      if (error) {
+                        Alert.alert('Delete failed', error.message);
+                        return;
+                      }
+                      await signOut();
+                    } catch (err: any) {
+                      Alert.alert('Delete failed', err?.message ?? String(err));
+                    }
                   },
                 },
               ],
@@ -218,115 +234,7 @@ export function ProfileScreen() {
           setEditOpen(false);
         }}
       />
-      <ChangePinSheet open={pinOpen} onClose={() => setPinOpen(false)} />
     </View>
-  );
-}
-
-function ChangePinSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const t = useTheme();
-  const [current, setCurrent] = useState('');
-  const [next, setNext] = useState('');
-  const [confirm, setConfirm] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
-
-  React.useEffect(() => {
-    if (open) {
-      setCurrent('');
-      setNext('');
-      setConfirm('');
-      setErr(null);
-      setDone(false);
-    }
-  }, [open]);
-
-  const submit = async () => {
-    setErr(null);
-    const expected = await getPin();
-    if (current !== expected) return setErr('Current PIN is wrong');
-    if (!/^\d{4}$/.test(next)) return setErr('New PIN must be 4 digits');
-    if (next !== confirm) return setErr("PINs don't match");
-    setBusy(true);
-    try {
-      await setPin(next);
-      setDone(true);
-      setTimeout(onClose, 700);
-    } catch (e: any) {
-      setErr(e.message);
-    }
-    setBusy(false);
-  };
-
-  const input = {
-    backgroundColor: t.colors.moonlight,
-    borderRadius: t.radii.md,
-    padding: 14,
-    fontFamily: t.type.body,
-    color: t.colors.ink,
-    marginBottom: 12,
-    fontSize: 18,
-    letterSpacing: 6,
-  };
-
-  return (
-    <BottomSheet visible={open} onClose={onClose}>
-      <Text style={{ fontFamily: t.type.display, fontSize: 24, lineHeight: 32, paddingTop: 2, marginBottom: 4 }}>
-        Change PIN
-      </Text>
-      <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 16 }}>
-        Used to confirm sensitive actions like turning off location sharing. 4 digits.
-      </Text>
-
-      <Eyebrow style={{ marginBottom: 6 }}>CURRENT PIN</Eyebrow>
-      <TextInput
-        value={current}
-        onChangeText={(s) => setCurrent(s.replace(/[^0-9]/g, '').slice(0, 4))}
-        keyboardType="number-pad"
-        secureTextEntry
-        style={input}
-        placeholderTextColor={t.colors.inkMute}
-      />
-      <Eyebrow style={{ marginBottom: 6 }}>NEW PIN</Eyebrow>
-      <TextInput
-        value={next}
-        onChangeText={(s) => setNext(s.replace(/[^0-9]/g, '').slice(0, 4))}
-        keyboardType="number-pad"
-        secureTextEntry
-        style={input}
-        placeholderTextColor={t.colors.inkMute}
-      />
-      <Eyebrow style={{ marginBottom: 6 }}>CONFIRM NEW PIN</Eyebrow>
-      <TextInput
-        value={confirm}
-        onChangeText={(s) => setConfirm(s.replace(/[^0-9]/g, '').slice(0, 4))}
-        keyboardType="number-pad"
-        secureTextEntry
-        style={input}
-        placeholderTextColor={t.colors.inkMute}
-      />
-
-      {err && (
-        <Text variant="small" color={t.colors.crimson} style={{ marginBottom: 8 }}>
-          {err}
-        </Text>
-      )}
-      {done && (
-        <Text variant="small" color={t.colors.statusOk} style={{ marginBottom: 8 }}>
-          PIN updated ✓
-        </Text>
-      )}
-
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        <PillButton variant="ghost" style={{ flex: 1 }} onPress={onClose}>
-          Cancel
-        </PillButton>
-        <PillButton style={{ flex: 1 }} onPress={submit} disabled={busy}>
-          {busy ? 'Saving…' : 'Save PIN'}
-        </PillButton>
-      </View>
-    </BottomSheet>
   );
 }
 

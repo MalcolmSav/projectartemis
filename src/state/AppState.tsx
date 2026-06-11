@@ -18,11 +18,6 @@ export interface TripState {
   startedAt: number;
 }
 
-interface PinAsk {
-  reason: string;
-  onOk: () => void;
-}
-
 interface State {
   // Location sharing
   sharing: boolean;
@@ -45,8 +40,6 @@ interface State {
   fakeCallActive: boolean;
   fakeCallCallerName: string;
 
-  // PIN modal
-  pinAsk: PinAsk | null;
 }
 
 interface Actions {
@@ -67,8 +60,6 @@ interface Actions {
   setFakeCallActive: (b: boolean) => void;
   setFakeCallCallerName: (name: string) => void;
 
-  askPin: (reason: string, onOk: () => void) => void;
-  clearPinAsk: () => void;
 }
 
 let _idSeq = 0;
@@ -94,8 +85,6 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [fakeCallScheduledAt, setFakeCallScheduledAt] = useState<number | null>(null);
   const [fakeCallActive, setFakeCallActive] = useState(false);
   const [fakeCallCallerName, setFakeCallCallerName] = useState('Mamma');
-  const [pinAsk, setPinAsk] = useState<PinAsk | null>(null);
-
   const handleSetSharing = useCallback((b: boolean) => {
     setSharing(b);
     if (b) setShareStartedAt(Date.now());
@@ -126,11 +115,6 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   }, []);
   const cancelFakeCallSchedule = useCallback(() => setFakeCallScheduledAt(null), []);
 
-  const askPin: Actions['askPin'] = useCallback((reason, onOk) => {
-    setPinAsk({ reason, onOk });
-  }, []);
-  const clearPinAsk = useCallback(() => setPinAsk(null), []);
-
   const value = useMemo<State & Actions>(
     () => ({
       sharing,
@@ -144,7 +128,6 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       fakeCallScheduledAt,
       fakeCallActive,
       fakeCallCallerName,
-      pinAsk,
       setSharing: handleSetSharing,
       setShareMode,
       setVisibleTo,
@@ -157,8 +140,6 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       cancelFakeCallSchedule,
       setFakeCallActive,
       setFakeCallCallerName,
-      askPin,
-      clearPinAsk,
     }),
     [
       sharing,
@@ -172,7 +153,6 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       fakeCallScheduledAt,
       fakeCallActive,
       fakeCallCallerName,
-      pinAsk,
       handleSetSharing,
       setVisibleTo,
       addReport,
@@ -182,8 +162,6 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       endTrip,
       scheduleFakeCall,
       cancelFakeCallSchedule,
-      askPin,
-      clearPinAsk,
     ],
   );
 

@@ -2,8 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { ScrollView, View, Pressable, TextInput } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Text, Eyebrow, Card, PillButton, Avatar } from '../components';
-import { IconChevron } from '../components/icons';
+import { Text, Eyebrow, Card, PillButton, Avatar, BottomSheet } from '../components';
+import { IconChevron, IconClock } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
 import { useCircle } from '../hooks/useCircle';
 import { useTrips } from '../hooks/useTrips';
@@ -22,17 +22,24 @@ export function TripSetupScreen() {
   const t = useTheme();
   const nav = useNavigation<Nav>();
   const { members } = useCircle();
-  const { activeTrip, start } = useTrips();
+  const { activeTrip, loading, start } = useTrips();
   const [destination, setDestination] = useState('');
-  const [eta, setEta] = useState('');
+  const [etaHour, setEtaHour] = useState<number | null>(null);
+  const [etaMinute, setEtaMinute] = useState<number | null>(null);
+  const [etaOpen, setEtaOpen] = useState(false);
   const [transport, setTransport] = useState('walk');
+
+  const etaString = etaHour !== null && etaMinute !== null
+    ? `${String(etaHour).padStart(2, '0')}:${String(etaMinute).padStart(2, '0')}`
+    : null;
   const [buddyId, setBuddyId] = useState<string | null>(members[0]?.profile.id ?? null);
+  const [locationInterval, setLocationInterval] = useState(60); // seconds
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    if (activeTrip) nav.replace('TripActive');
-  }, [activeTrip, nav]);
+    if (!loading && activeTrip) nav.replace('TripActive');
+  }, [activeTrip, loading, nav]);
 
   useEffect(() => {
     if (!buddyId && members[0]) setBuddyId(members[0].profile.id);
@@ -42,7 +49,7 @@ export function TripSetupScreen() {
     if (!destination.trim()) return setErr('Destination is required');
     setBusy(true);
     setErr(null);
-    const res = await start({ destination: destination.trim(), eta: eta.trim() || undefined, buddyId, transport });
+    const res = await start({ destination: destination.trim(), eta: etaString ?? undefined, buddyId, transport, locationInterval });
     setBusy(false);
     if (res.error) return setErr(res.error);
     nav.replace('TripActive');
@@ -70,16 +77,27 @@ export function TripSetupScreen() {
           />
         </Card>
 
-        <Eyebrow style={{ marginBottom: 6 }}>ETA</Eyebrow>
-        <Card style={{ marginBottom: 14 }}>
-          <TextInput
-            value={eta}
-            onChangeText={setEta}
-            placeholder="HH:MM"
-            placeholderTextColor={t.colors.inkMute}
-            style={{ fontFamily: t.type.body, fontSize: 16, color: t.colors.ink }}
-          />
-        </Card>
+        <Eyebrow style={{ marginBottom: 6 }}>ETA (OPTIONAL)</Eyebrow>
+        <Pressable onPress={() => setEtaOpen(true)}>
+          <Card style={{ marginBottom: 14 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Text variant="body" color={etaString ? t.colors.ink : t.colors.inkMute}>
+                {etaString ?? 'Set arrival time…'}
+              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                {etaString && (
+                  <Pressable
+                    onPress={(e) => { e.stopPropagation(); setEtaHour(null); setEtaMinute(null); }}
+                    hitSlop={12}
+                  >
+                    <Text variant="meta" color={t.colors.inkMute}>✕</Text>
+                  </Pressable>
+                )}
+                <IconClock size={16} color={t.colors.inkSoft} />
+              </View>
+            </View>
+          </Card>
+        </Pressable>
 
         <Eyebrow style={{ marginBottom: 6 }}>TRANSPORT</Eyebrow>
         <View style={{ flexDirection: 'row', gap: 8, marginBottom: 18 }}>
@@ -160,6 +178,35 @@ export function TripSetupScreen() {
           </View>
         )}
 
+        <Eyebrow style={{ marginBottom: 6 }}>LOCATION UPDATE FREQUENCY</Eyebrow>
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 18 }}>
+          {([
+            { label: '1 min', value: 60 },
+            { label: '5 min', value: 300 },
+            { label: '10 min', value: 600 },
+            { label: '30 min', value: 1800 },
+          ] as const).map((opt) => {
+            const active = locationInterval === opt.value;
+            return (
+              <Pressable
+                key={opt.value}
+                onPress={() => setLocationInterval(opt.value)}
+                style={{
+                  flex: 1,
+                  alignItems: 'center',
+                  paddingVertical: 12,
+                  borderRadius: t.radii.md,
+                  backgroundColor: active ? t.colors.forest700 : t.colors.parchment,
+                }}
+              >
+                <Text variant="small" weight="semibold" color={active ? palette.gold300 : t.colors.inkSoft}>
+                  {opt.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
         <View style={{ backgroundColor: t.colors.gold100, padding: 14, borderRadius: t.radii.md, marginBottom: 18 }}>
           <Text variant="meta" color={t.colors.gold700} weight="semibold">
             HOW IT WORKS
@@ -179,6 +226,99 @@ export function TripSetupScreen() {
           {busy ? 'Starting…' : '▶  Start trip'}
         </PillButton>
       </ScrollView>
+
+      <EtaPickerSheet
+        open={etaOpen}
+        onClose={() => setEtaOpen(false)}
+        onConfirm={(h, m) => { setEtaHour(h); setEtaMinute(m); setEtaOpen(false); }}
+        initialHour={etaHour ?? new Date().getHours()}
+        initialMinute={etaMinute ?? Math.ceil(new Date().getMinutes() / 5) * 5 % 60}
+      />
     </View>
+  );
+}
+
+function EtaPickerSheet({
+  open,
+  onClose,
+  onConfirm,
+  initialHour,
+  initialMinute,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onConfirm: (hour: number, minute: number) => void;
+  initialHour: number;
+  initialMinute: number;
+}) {
+  const t = useTheme();
+  const [hour, setHour] = useState(initialHour);
+  const [minute, setMinute] = useState(initialMinute);
+
+  // Sync if parent changes initial values (e.g. user clears and reopens)
+  React.useEffect(() => { if (open) { setHour(initialHour); setMinute(initialMinute); } }, [open]);
+
+  const bump = (setter: (v: number) => void, val: number, mod: number, step: number) =>
+    setter(((val + step) % mod + mod) % mod);
+  const fmt2 = (n: number) => String(n).padStart(2, '0');
+
+  return (
+    <BottomSheet visible={open} onClose={onClose}>
+      <Text style={{ fontFamily: t.type.display, fontSize: 24, lineHeight: 32, paddingTop: 2, marginBottom: 4 }}>
+        Set arrival time
+      </Text>
+      <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 20 }}>
+        We'll check in 5 minutes before this time.
+      </Text>
+
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 24 }}>
+        {/* Hour */}
+        <View style={{ alignItems: 'center', gap: 8 }}>
+          <Pressable
+            onPress={() => bump(setHour, hour, 24, 1)}
+            style={{ width: 48, height: 48, borderRadius: t.radii.md, backgroundColor: t.colors.moonlight, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Text style={{ fontFamily: t.type.bodyBold, fontSize: 18, color: t.colors.ink, lineHeight: 22 }}>▲</Text>
+          </Pressable>
+          <View style={{ width: 70, height: 64, borderRadius: t.radii.md, backgroundColor: t.colors.forest700, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ fontFamily: t.type.display, fontSize: 28, color: '#fff', paddingTop: 4, includeFontPadding: false, lineHeight: 34 }}>{fmt2(hour)}</Text>
+          </View>
+          <Pressable
+            onPress={() => bump(setHour, hour, 24, -1)}
+            style={{ width: 48, height: 48, borderRadius: t.radii.md, backgroundColor: t.colors.moonlight, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Text style={{ fontFamily: t.type.bodyBold, fontSize: 18, color: t.colors.ink, lineHeight: 22 }}>▼</Text>
+          </Pressable>
+        </View>
+
+        <Text style={{ fontFamily: t.type.bodyBold, fontSize: 28, color: t.colors.ink, lineHeight: 34 }}>:</Text>
+
+        {/* Minute */}
+        <View style={{ alignItems: 'center', gap: 8 }}>
+          <Pressable
+            onPress={() => bump(setMinute, minute, 60, 5)}
+            style={{ width: 48, height: 48, borderRadius: t.radii.md, backgroundColor: t.colors.moonlight, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Text style={{ fontFamily: t.type.bodyBold, fontSize: 18, color: t.colors.ink, lineHeight: 22 }}>▲</Text>
+          </Pressable>
+          <View style={{ width: 70, height: 64, borderRadius: t.radii.md, backgroundColor: t.colors.forest700, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ fontFamily: t.type.display, fontSize: 28, color: '#fff', paddingTop: 4, includeFontPadding: false, lineHeight: 34 }}>{fmt2(minute)}</Text>
+          </View>
+          <Pressable
+            onPress={() => bump(setMinute, minute, 60, -5)}
+            style={{ width: 48, height: 48, borderRadius: t.radii.md, backgroundColor: t.colors.moonlight, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Text style={{ fontFamily: t.type.bodyBold, fontSize: 18, color: t.colors.ink, lineHeight: 22 }}>▼</Text>
+          </Pressable>
+        </View>
+      </View>
+
+      <PillButton block onPress={() => onConfirm(hour, minute)} style={{ marginBottom: 8 }}>
+        Set ETA to {fmt2(hour)}:{fmt2(minute)}
+      </PillButton>
+      <PillButton variant="ghost" block onPress={onClose}>
+        Cancel
+      </PillButton>
+    </BottomSheet>
   );
 }

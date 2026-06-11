@@ -8,7 +8,8 @@ interface AuthValue {
   user: User | null;
   profile: Profile | null;
   signIn: (email: string, password: string) => Promise<{ error?: string }>;
-  signUp: (email: string, password: string, name: string) => Promise<{ error?: string }>;
+  signUp: (email: string, password: string, name: string, username: string) => Promise<{ error?: string }>;
+  signInWithGoogleToken: (idToken: string) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -61,17 +62,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return error ? { error: error.message } : {};
   };
 
-  const signUp: AuthValue['signUp'] = async (email, password, name) => {
+  const signUp: AuthValue['signUp'] = async (email, password, name, username) => {
+    const trimmedName = name.trim();
+    const trimmedUsername = username.trim();
     const { error } = await supabase.auth.signUp({
       email: email.trim(),
       password,
-      options: { data: { name: name.trim() } },
+      options: { data: { name: trimmedName, username: trimmedUsername } },
     });
     return error ? { error: error.message } : {};
   };
 
+  const signInWithGoogleToken: AuthValue['signInWithGoogleToken'] = async (idToken) => {
+    const { error } = await supabase.auth.signInWithIdToken({ provider: 'google', token: idToken });
+    return error ? { error: error.message } : {};
+  };
+
   const signOut = async () => {
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
+    if (!error) {
+      setSession(null);
+      setProfile(null);
+    }
   };
 
   const value = useMemo<AuthValue>(
@@ -82,6 +94,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       profile,
       signIn,
       signUp,
+      signInWithGoogleToken,
       signOut,
       refreshProfile,
     }),

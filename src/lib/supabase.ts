@@ -24,10 +24,13 @@ export type Profile = {
   id: string;
   email: string;
   name: string | null;
+  username: string | null;
   phone: string | null;
   bio: string | null;
   avatar_url: string | null;
   onboarded: boolean;
+  fake_call_tutorial_completed: boolean | null;
+  trip_mode_tutorial_completed: boolean | null;
   created_at: string;
 };
 

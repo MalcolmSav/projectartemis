@@ -1,30 +1,123 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, TextInput, Pressable, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
+import * as Google from 'expo-auth-session/providers/google';
 import { Text, Eyebrow, PillButton } from '../components';
-import { ArtemisMark } from '../components/icons';
+import { ArtemisMark, GoogleLogo } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
 import { useAuth } from '../state/Auth';
 import { supabase } from '../lib/supabase';
+
+WebBrowser.maybeCompleteAuthSession();
 
 type Mode = 'signIn' | 'signUp';
 
 export function AuthScreen() {
   const t = useTheme();
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, signInWithGoogleToken } = useAuth();
   const [mode, setMode] = useState<Mode>('signIn');
+  const [username, setUsername] = useState('');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const [_request, googleResponse, promptGoogleAsync] = Google.useAuthRequest({
+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+  });
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    if (googleResponse?.type === 'success') {
+      const idToken = googleResponse.params?.id_token;
+      if (!idToken) {
+        setErr('Google sign-in failed — no token returned.');
+        setBusy(false);
+        return;
+      }
+      signInWithGoogleToken(idToken).then((res) => {
+        setBusy(false);
+        if (res.error) setErr(res.error);
+      });
+    } else if (googleResponse?.type === 'error') {
+      setErr('Google sign-in was cancelled or failed.');
+      setBusy(false);
+    } else if (googleResponse?.type === 'dismiss') {
+      setBusy(false);
+    }
+  }, [googleResponse]);
+
+  const handleGooglePress = async () => {
+    setErr(null);
+    setBusy(true);
+    if (Platform.OS === 'web') {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: window.location.origin },
+      });
+      if (error) {
+        setErr(error.message);
+        setBusy(false);
+      }
+    } else {
+      promptGoogleAsync();
+    }
+  };
 
   const submit = async () => {
     setErr(null);
+    setMessage(null);
     setBusy(true);
+    const trimmedEmail = email.trim();
+    const trimmedUsername = username.trim();
+    const trimmedName = name.trim();
+    const trimmedPassword = password.trim();
+
+    if (mode === 'signUp') {
+      if (!trimmedUsername) {
+        setErr('Choose a username.');
+        setBusy(false);
+        return;
+      }
+      if (!/^[a-zA-Z0-9_]+$/.test(trimmedUsername)) {
+        setErr('Username can only include letters, numbers, and underscores.');
+        setBusy(false);
+        return;
+      }
+      if (!trimmedName) {
+        setErr('Enter your full name.');
+        setBusy(false);
+        return;
+      }
+      const { data: existing, error: lookupError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('username', trimmedUsername)
+        .maybeSingle();
+      if (lookupError) {
+        setErr('Unable to verify username availability.');
+        setBusy(false);
+        return;
+      }
+      if (existing) {
+        setErr('That username is already taken.');
+        setBusy(false);
+        return;
+      }
+    }
+
     const res =
-      mode === 'signIn' ? await signIn(email, password) : await signUp(email, password, name || email.split('@')[0]);
+      mode === 'signIn'
+        ? await signIn(trimmedEmail, trimmedPassword)
+        : await signUp(trimmedEmail, trimmedPassword, trimmedName, trimmedUsername);
     setBusy(false);
-    if (res.error) setErr(res.error);
+    if (res.error) {
+      setErr(res.error);
+    }
   };
 
   return (
@@ -59,13 +152,44 @@ export function AuthScreen() {
           )}
         </Text>
 
+        <PillButton
+          variant="secondary"
+          size="lg"
+          block
+          disabled={busy}
+          iconLeft={<GoogleLogo size={18} />}
+          onPress={handleGooglePress}
+          style={{ marginBottom: 20 }}
+        >
+          Continue with Google
+        </PillButton>
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20, gap: 10 }}>
+          <View style={{ flex: 1, height: 1, backgroundColor: t.colors.hairline }} />
+          <Text variant="small" color={t.colors.inkMute}>or</Text>
+          <View style={{ flex: 1, height: 1, backgroundColor: t.colors.hairline }} />
+        </View>
+
         {mode === 'signUp' && (
           <>
-            <Eyebrow style={{ marginBottom: 6 }}>NAME</Eyebrow>
+            <Eyebrow style={{ marginBottom: 6 }}>USERNAME</Eyebrow>
+            <Text variant="small" color={t.colors.inkMute} style={{ marginBottom: 10 }}>
+              How others will find and add you
+            </Text>
+            <TextInput
+              value={username}
+              onChangeText={setUsername}
+              placeholder="username"
+              placeholderTextColor={t.colors.inkMute}
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={inputStyle(t)}
+            />
+            <Eyebrow style={{ marginBottom: 6, marginTop: 18 }}>FULL NAME</Eyebrow>
             <TextInput
               value={name}
               onChangeText={setName}
-              placeholder="Your name"
+              placeholder="First and last name"
               placeholderTextColor={t.colors.inkMute}
               style={inputStyle(t)}
               autoCapitalize="words"
@@ -95,13 +219,27 @@ export function AuthScreen() {
           style={inputStyle(t)}
         />
 
-        {err && (
+        {err ? (
           <Text variant="small" color={t.colors.crimson} style={{ marginBottom: 10 }}>
             {err}
           </Text>
-        )}
+        ) : message ? (
+          <Text variant="small" color={t.colors.forest700} style={{ marginBottom: 10 }}>
+            {message}
+          </Text>
+        ) : null}
 
-        <PillButton size="lg" block onPress={submit} disabled={busy || !email || !password}>
+        <PillButton
+          size="lg"
+          block
+          onPress={submit}
+          disabled={
+            busy ||
+            !email.trim() ||
+            !password.trim() ||
+            (mode === 'signUp' && (!username.trim() || !name.trim()))
+          }
+        >
           {busy ? 'Working…' : mode === 'signIn' ? 'Sign in' : 'Create account'}
         </PillButton>
 
@@ -122,10 +260,16 @@ export function AuthScreen() {
                 return;
               }
               setBusy(true);
-              const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
+              const trimmedEmail = email.trim();
+              const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail);
               setBusy(false);
-              setErr(error ? error.message : null);
-              if (!error) setErr('Reset link sent — check your email.');
+              if (error) {
+                setErr(error.message);
+                setMessage(null);
+              } else {
+                setErr(null);
+                setMessage('Reset link sent — check your email.');
+              }
             }}
             style={{ marginTop: 12, alignItems: 'center' }}
           >

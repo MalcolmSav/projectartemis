@@ -70,7 +70,7 @@ export function HomeScreen() {
   const nav = useNavigation<Nav>();
   const { profile } = useAuth();
   const { members, pendingInvites, refresh: refreshCircle } = useCircle();
-  const { latestByUser, pendingForMe, recordOk, recordAlarm, sendWellnessRequest, refresh: refreshChecks } = useCheckIns();
+  const { latestByUser, pendingForMe, friendAlarm, clearFriendAlarm, recordOk, recordAlarm, sendWellnessRequest, refresh: refreshChecks } = useCheckIns();
   const { unreadTotal } = useConversations();
   const { byUser: presenceByUser } = usePresence();
   const { scheduledFor, triggered, schedule, cancel: cancelSchedule } = useScheduledCheckin();
@@ -85,6 +85,37 @@ export function HomeScreen() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
+
+  // Friend responded to my wellness check with an alarm
+  useEffect(() => {
+    if (!friendAlarm) return;
+    const name = friendAlarm.profile?.name ?? friendAlarm.profile?.email ?? 'Your friend';
+    Alert.alert(
+      '🚨 Alarm from ' + name,
+      `${name} responded to your wellness check with an alarm. They may need help.`,
+      [
+        {
+          text: 'Call them',
+          onPress: () => {
+            clearFriendAlarm();
+            if (friendAlarm.profile?.phone) {
+              const { Linking } = require('react-native');
+              Linking.openURL(`tel:${friendAlarm.profile.phone}`);
+            }
+          },
+        },
+        {
+          text: 'Go to profile',
+          onPress: () => {
+            clearFriendAlarm();
+            nav.navigate('CirclePerson', { id: friendAlarm.profile?.id ?? '' });
+          },
+        },
+        { text: 'Dismiss', style: 'cancel', onPress: clearFriendAlarm },
+      ],
+      { cancelable: false },
+    );
+  }, [friendAlarm]);
 
   // When the scheduled check-in time passes, prompt the user in-app
   useEffect(() => {
@@ -297,9 +328,13 @@ export function HomeScreen() {
                 justifyContent: 'center',
               }}
             >
-              <Text variant="small" color={t.colors.inkSoft} style={{ textAlign: 'center' }}>
-                Your circle is empty.{'\n'}Tap "Circle" to invite someone.
+              <Text variant="small" color={t.colors.inkSoft} style={{ textAlign: 'center', marginBottom: 12 }}>
+                Your circle is empty.
+                {'\n'}Go to the Circle tab below to invite someone by email.
               </Text>
+              <PillButton size="md" onPress={() => nav.navigate('Tabs' as any, { screen: 'Circle' } as any)}>
+                Open Circle
+              </PillButton>
             </View>
           ) : (
             members.map((m) => {
@@ -370,7 +405,7 @@ export function HomeScreen() {
               <QuickAction
                 icon={<IconShare color={t.colors.forest700} />}
                 label="Share location"
-                sub="On · 3 people"
+                sub="Sharing with your circle"
                 onPress={() => nav.navigate('LocationShare')}
               />
             </View>
@@ -753,20 +788,20 @@ function ScheduleCheckinSheet({
             onPress={() => bump(setHour, hour, 24, 1)}
             style={{ width: 48, height: 48, borderRadius: t.radii.md, backgroundColor: t.colors.moonlight, alignItems: 'center', justifyContent: 'center' }}
           >
-            <Text variant="body" weight="semibold">▲</Text>
+            <Text style={{ fontFamily: t.type.bodyBold, fontSize: 18, color: t.colors.ink, lineHeight: 22 }}>▲</Text>
           </Pressable>
-          <View style={{ width: 70, height: 56, borderRadius: t.radii.md, backgroundColor: t.colors.forest700, alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ fontFamily: t.type.display, fontSize: 28, color: '#fff' }}>{fmt2(hour)}</Text>
+          <View style={{ width: 70, height: 64, borderRadius: t.radii.md, backgroundColor: t.colors.forest700, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ fontFamily: t.type.display, fontSize: 28, color: '#fff', paddingTop: 4, includeFontPadding: false, lineHeight: 34 }}>{fmt2(hour)}</Text>
           </View>
           <Pressable
             onPress={() => bump(setHour, hour, 24, -1)}
             style={{ width: 48, height: 48, borderRadius: t.radii.md, backgroundColor: t.colors.moonlight, alignItems: 'center', justifyContent: 'center' }}
           >
-            <Text variant="body" weight="semibold">▼</Text>
+            <Text style={{ fontFamily: t.type.bodyBold, fontSize: 18, color: t.colors.ink, lineHeight: 22 }}>▼</Text>
           </Pressable>
         </View>
 
-        <Text style={{ fontFamily: t.type.display, fontSize: 32, color: t.colors.ink, marginBottom: 4 }}>:</Text>
+        <Text style={{ fontFamily: t.type.bodyBold, fontSize: 28, color: t.colors.ink, lineHeight: 34 }}>:</Text>
 
         {/* Minute */}
         <View style={{ alignItems: 'center', gap: 8 }}>
@@ -774,16 +809,16 @@ function ScheduleCheckinSheet({
             onPress={() => bump(setMinute, minute, 60, 5)}
             style={{ width: 48, height: 48, borderRadius: t.radii.md, backgroundColor: t.colors.moonlight, alignItems: 'center', justifyContent: 'center' }}
           >
-            <Text variant="body" weight="semibold">▲</Text>
+            <Text style={{ fontFamily: t.type.bodyBold, fontSize: 18, color: t.colors.ink, lineHeight: 22 }}>▲</Text>
           </Pressable>
-          <View style={{ width: 70, height: 56, borderRadius: t.radii.md, backgroundColor: t.colors.forest700, alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ fontFamily: t.type.display, fontSize: 28, color: '#fff' }}>{fmt2(minute)}</Text>
+          <View style={{ width: 70, height: 64, borderRadius: t.radii.md, backgroundColor: t.colors.forest700, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ fontFamily: t.type.display, fontSize: 28, color: '#fff', paddingTop: 4, includeFontPadding: false, lineHeight: 34 }}>{fmt2(minute)}</Text>
           </View>
           <Pressable
             onPress={() => bump(setMinute, minute, 60, -5)}
             style={{ width: 48, height: 48, borderRadius: t.radii.md, backgroundColor: t.colors.moonlight, alignItems: 'center', justifyContent: 'center' }}
           >
-            <Text variant="body" weight="semibold">▼</Text>
+            <Text style={{ fontFamily: t.type.bodyBold, fontSize: 18, color: t.colors.ink, lineHeight: 22 }}>▼</Text>
           </Pressable>
         </View>
       </View>

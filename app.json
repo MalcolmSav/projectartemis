@@ -29,7 +29,8 @@
           "photosPermission": "Artemis lets you set a profile photo from your gallery.",
           "cameraPermission": "Artemis lets you take a profile photo with your camera."
         }
-      ]
+      ],
+      "expo-web-browser"
     ]
   }
 }
