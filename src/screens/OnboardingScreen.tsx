@@ -9,6 +9,7 @@ import { OnboardingCircleStep } from './OnboardingCircleStep';
 
 import { OnboardingFakeCallStep } from './OnboardingFakeCallStep';
 import { OnboardingCalendarStep } from './OnboardingCalendarStep';
+import { OnboardingWellnessStep } from './OnboardingWellnessStep';
 import { OnboardingTripModeStep } from './OnboardingTripModeStep';
 import { OnboardingCompleteStep } from './OnboardingCompleteStep';
 
@@ -17,7 +18,7 @@ type EmergencyContact = {
   contactInfo: string;
 };
 
-type OnboardingStep = 'intro' | 'emergency' | 'circle' | 'calendar' | 'fakecall' | 'tripmode' | 'complete';
+type OnboardingStep = 'intro' | 'circle' | 'emergency' | 'wellness' | 'calendar' | 'fakecall' | 'tripmode' | 'complete';
 
 export function OnboardingScreen() {
   const t = useTheme();
@@ -95,7 +96,7 @@ export function OnboardingScreen() {
       }
 
       await refreshProfile();
-      setStep('circle');
+      setStep('wellness');
     } catch (e: any) {
       setErr(e?.message ?? String(e));
     }
@@ -121,8 +122,9 @@ export function OnboardingScreen() {
               </Text>
               <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 22 }}>
                 Artemis helps you stay connected with trusted people when you are out, traveling, or need a quiet exit.
-                You can share your live location, set up emergency contacts, start a trip with a buddy, and schedule a
-                fake call for uncomfortable moments.
+                Your circle can use Artemis features with you: location sharing, wellness checks, calendar visibility,
+                trip mode, and safety follow-ups. Emergency contacts are separate people others can call if you are
+                unavailable.
               </Text>
 
               <Card style={{ marginBottom: 24 }}>
@@ -131,10 +133,13 @@ export function OnboardingScreen() {
                     During setup you will:
                   </Text>
                   <Text variant="small" color={t.colors.inkSoft}>
-                    Add emergency contacts who should be reached first.
+                    Build your circle of trusted people.
                   </Text>
                   <Text variant="small" color={t.colors.inkSoft}>
-                    Build your circle of trusted people.
+                    Add emergency contacts, like a partner or parent, for others to reach if you are unavailable.
+                  </Text>
+                  <Text variant="small" color={t.colors.inkSoft}>
+                    Learn how wellness checks work.
                   </Text>
                   <Text variant="small" color={t.colors.inkSoft}>
                     Add moments where you may be hard to reach.
@@ -145,7 +150,7 @@ export function OnboardingScreen() {
                 </View>
               </Card>
 
-              <PillButton size="lg" block onPress={() => setStep('emergency')}>
+              <PillButton size="lg" block onPress={() => setStep('circle')}>
                 Start setup
               </PillButton>
 
@@ -172,13 +177,14 @@ export function OnboardingScreen() {
 
             <Eyebrow style={{ marginBottom: 6 }}>WELCOME</Eyebrow>
             <Text variant="displayH1" style={{ marginBottom: 8 }}>
-              Set up your{' '}
+              Add your{' '}
               <Text variant="displayH1" italic accent>
-                circle.
+                emergency contacts.
               </Text>
             </Text>
             <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 22 }}>
-              Add emergency contacts. List them by priority – who to call first.
+              These are not your Artemis circle. They are people someone else can reach out to if you are hard to reach,
+              like a partner, mother, or close family member. List them by priority.
             </Text>
 
             {emergencyContacts.map((contact, index) => (
@@ -235,7 +241,11 @@ export function OnboardingScreen() {
         </KeyboardAvoidingView>
       ) : step === 'circle' ? (
         <OnboardingCircleStep 
-          onComplete={() => setStep('calendar')} 
+          onComplete={() => setStep('emergency')} 
+        />
+      ) : step === 'wellness' ? (
+        <OnboardingWellnessStep
+          onComplete={() => setStep('calendar')}
         />
       ) : step === 'calendar' ? (
         <OnboardingCalendarStep

@@ -98,7 +98,9 @@ export function OnboardingCircleStep({ onComplete }: { onComplete: () => void })
           </Text>
         </Text>
         <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 22 }}>
-          They'll be able to see your location, events, and send you wellness checks. (You can add more later)
+          Your circle is made of friends and trusted people inside Artemis. They can send wellness checks, see what you
+          choose to share, follow trips, view shared calendar moments, and use the safety features you enable with them.
+          You can add more later.
         </Text>
 
         {/* Search Input */}
