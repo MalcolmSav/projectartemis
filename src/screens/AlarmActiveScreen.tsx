@@ -219,6 +219,17 @@ export function AlarmActiveScreen() {
         <PillButton
           size="lg"
           block
+          onPress={() => nav.navigate('EmergencyCall')}
+          style={{ backgroundColor: palette.crimson, marginBottom: 10 }}
+        >
+          <Text style={{ fontFamily: t.type.display, fontSize: 20, color: '#fff', lineHeight: 26 }}>
+            📞  Call 112
+          </Text>
+        </PillButton>
+
+        <PillButton
+          size="lg"
+          block
           variant="secondary"
           onPress={() => nav.goBack()}
           style={{ backgroundColor: '#F5F0E8' }}

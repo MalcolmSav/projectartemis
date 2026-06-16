@@ -6,6 +6,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Text, Eyebrow, Avatar, Card, PillButton, Divider, Row } from '../components';
+import { useCircle } from '../hooks/useCircle';
 import { IconChevron, IconPhone, IconMessage, IconShield, BowArrow } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
 import { palette } from '../theme/tokens';
@@ -28,6 +29,8 @@ export function CirclePersonScreen() {
   const [activity, setActivity] = useState<RecentCheckIn[]>([]);
   const { sendWellnessRequest } = useCheckIns();
   const { contacts: emergencyContacts } = useEmergencyContacts(route.params.id);
+  const { members, remove } = useCircle();
+  const [removing, setRemoving] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -204,6 +207,40 @@ export function CirclePersonScreen() {
             </Card>
           </>
         )}
+        {/* Remove from circle */}
+        {(() => {
+          const edge = members.find((m) => m.profile.id === route.params.id);
+          if (!edge) return null;
+          return (
+            <Pressable
+              disabled={removing}
+              onPress={() => {
+                Alert.alert(
+                  `Remove ${displayName}?`,
+                  "They'll no longer see your check-ins and you won't see theirs.",
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Remove',
+                      style: 'destructive',
+                      onPress: async () => {
+                        setRemoving(true);
+                        await remove(edge.edgeId);
+                        if (nav.canGoBack()) nav.goBack();
+                        else (nav as any).navigate('Tabs', { screen: 'Circle' });
+                      },
+                    },
+                  ],
+                );
+              }}
+              style={{ marginTop: 28, marginBottom: 8, alignItems: 'center', opacity: removing ? 0.5 : 1 }}
+            >
+              <Text variant="small" weight="semibold" color={t.colors.crimson}>
+                {removing ? 'Removing…' : `Remove ${displayName} from circle`}
+              </Text>
+            </Pressable>
+          );
+        })()}
       </ScrollView>
     </View>
   );

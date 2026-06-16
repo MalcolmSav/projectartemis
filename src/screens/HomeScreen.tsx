@@ -70,7 +70,7 @@ export function HomeScreen() {
   const nav = useNavigation<Nav>();
   const { profile } = useAuth();
   const { members, pendingInvites, refresh: refreshCircle } = useCircle();
-  const { latestByUser, pendingForMe, friendAlarm, clearFriendAlarm, recordOk, recordAlarm, sendWellnessRequest, refresh: refreshChecks } = useCheckIns();
+  const { latestByUser, pendingForMe, friendAlarm, clearFriendAlarm, friendNeedHelp, clearFriendNeedHelp, recordOk, recordAlarm, sendWellnessRequest, respondWellness, refresh: refreshChecks } = useCheckIns();
   const { unreadTotal } = useConversations();
   const { byUser: presenceByUser } = usePresence();
   const { scheduledFor, triggered, schedule, cancel: cancelSchedule } = useScheduledCheckin();
@@ -85,6 +85,48 @@ export function HomeScreen() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  const shownWellnessRef = React.useRef<Set<string>>(new Set());
+
+  // Navigate to WellnessIncoming when a new wellness check arrives
+  useEffect(() => {
+    if (!pendingForMe) return;
+    if (shownWellnessRef.current.has(pendingForMe.id)) return;
+    shownWellnessRef.current.add(pendingForMe.id);
+    nav.navigate('WellnessIncoming', {
+      fromName: pendingForMe.from?.name ?? pendingForMe.from?.email ?? 'Someone',
+    });
+  }, [pendingForMe]);
+
+  // Friend responded "need help" to my wellness check
+  useEffect(() => {
+    if (!friendNeedHelp) return;
+    const name = friendNeedHelp.profile?.name ?? friendNeedHelp.profile?.email ?? 'Your friend';
+    Alert.alert(
+      `⚠️ ${name} needs help`,
+      `${name} responded to your wellness check saying they need help. Check on them now.`,
+      [
+        {
+          text: 'Call them',
+          onPress: () => {
+            clearFriendNeedHelp();
+            if (friendNeedHelp.profile?.phone) {
+              const { Linking } = require('react-native');
+              Linking.openURL(`tel:${friendNeedHelp.profile.phone}`);
+            }
+          },
+        },
+        {
+          text: 'Go to profile',
+          onPress: () => {
+            clearFriendNeedHelp();
+            if (friendNeedHelp.profile?.id) nav.navigate('CirclePerson', { id: friendNeedHelp.profile.id });
+          },
+        },
+        { text: 'Dismiss', style: 'cancel', onPress: clearFriendNeedHelp },
+      ],
+      { cancelable: false },
+    );
+  }, [friendNeedHelp]);
 
   // Friend responded to my wellness check with an alarm
   useEffect(() => {
@@ -271,6 +313,9 @@ export function HomeScreen() {
               fromAvatar={pendingForMe.from?.avatar_url ?? undefined}
               okSent={okSent}
               onOk={handleOk}
+              onNeedHelp={async () => {
+                await respondWellness('wellness_response', 'need_help');
+              }}
               onAlarm={async () => {
                 await recordAlarm('Manual alarm from wellness response');
                 nav.navigate('AlarmActive');
@@ -330,7 +375,7 @@ export function HomeScreen() {
             >
               <Text variant="small" color={t.colors.inkSoft} style={{ textAlign: 'center', marginBottom: 12 }}>
                 Your circle is empty.
-                {'\n'}Go to the Circle tab below to invite someone by email.
+                {'\n'}Go to the Circle tab below to add someone by username.
               </Text>
               <PillButton size="md" onPress={() => nav.navigate('Tabs' as any, { screen: 'Circle' } as any)}>
                 Open Circle
@@ -428,6 +473,26 @@ export function HomeScreen() {
                 onPress={() => setScheduleOpen(true)}
               />
             </View>
+            <Pressable
+              onPress={() => nav.navigate('EmergencyCall')}
+              style={[
+                {
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  paddingVertical: 14,
+                  borderRadius: t.radii.lg,
+                  backgroundColor: 'rgba(192,57,43,0.08)',
+                  borderWidth: 1,
+                  borderColor: 'rgba(192,57,43,0.2)',
+                },
+              ]}
+            >
+              <Text style={{ fontFamily: t.type.bodySemibold, fontSize: 15, color: palette.crimson }}>
+                📞  Call 112 — emergency instructions
+              </Text>
+            </Pressable>
           </View>
         </View>
       </ScrollView>
@@ -602,6 +667,7 @@ function PendingHero({
   fromAvatar,
   okSent,
   onOk,
+  onNeedHelp,
   onAlarm,
   pulseStyle,
 }: {
@@ -609,6 +675,7 @@ function PendingHero({
   fromAvatar?: string;
   okSent: boolean;
   onOk: () => void;
+  onNeedHelp: () => void;
   onAlarm: () => void;
   pulseStyle: any;
 }) {
@@ -672,8 +739,17 @@ function PendingHero({
         </Pressable>
       </View>
 
-      <PillButton variant="danger" size="lg" block style={{ marginTop: 10 }} onPress={onAlarm}>
-        🚨  Need help · alert circle
+      <PillButton
+        variant="secondary"
+        size="lg"
+        block
+        style={{ marginTop: 10, backgroundColor: '#FFF8E1' }}
+        onPress={onNeedHelp}
+      >
+        ⚠️  I need help · let {fromName} know
+      </PillButton>
+      <PillButton variant="danger" size="lg" block style={{ marginTop: 8 }} onPress={onAlarm}>
+        🚨  ALARM · alert entire circle
       </PillButton>
     </Card>
   );

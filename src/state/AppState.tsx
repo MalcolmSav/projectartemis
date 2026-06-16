@@ -1,10 +1,6 @@
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import {
-  ArtemisEvent,
   CalendarAccess,
-  CIRCLE,
-  INITIAL_EVENTS,
-  INITIAL_REPORTS,
   MapReport,
   ShareMode,
   Transport,
@@ -29,7 +25,6 @@ interface State {
   reports: MapReport[];
 
   // Calendar
-  events: ArtemisEvent[];
   calendarShares: Record<string, CalendarAccess>;
 
   // Trip
@@ -49,7 +44,6 @@ interface Actions {
 
   addReport: (r: Omit<MapReport, 'id'>) => void;
 
-  addEvent: (e: Omit<ArtemisEvent, 'id'>) => void;
   setCalendarShare: (id: string, level: CalendarAccess) => void;
 
   startTrip: (t: TripState) => void;
@@ -70,17 +64,12 @@ function nextId(prefix: string) {
 const Ctx = createContext<(State & Actions) | null>(null);
 
 export function AppStateProvider({ children }: { children: React.ReactNode }) {
-  const [sharing, setSharing] = useState(true);
-  const [shareStartedAt, setShareStartedAt] = useState<number | null>(Date.now());
+  const [sharing, setSharing] = useState(false);
+  const [shareStartedAt, setShareStartedAt] = useState<number | null>(null);
   const [shareMode, setShareMode] = useState<ShareMode>('always');
-  const [visibleTo, setVisibleToMap] = useState<Record<string, boolean>>(
-    Object.fromEntries(CIRCLE.map((p) => [p.id, true])),
-  );
-  const [reports, setReports] = useState<MapReport[]>(INITIAL_REPORTS);
-  const [events, setEvents] = useState<ArtemisEvent[]>(INITIAL_EVENTS);
-  const [calendarShares, setCalendarShares] = useState<Record<string, CalendarAccess>>(
-    Object.fromEntries(CIRCLE.map((p) => [p.id, p.calendarAccess])),
-  );
+  const [visibleTo, setVisibleToMap] = useState<Record<string, boolean>>({});
+  const [reports, setReports] = useState<MapReport[]>([]);
+  const [calendarShares, setCalendarShares] = useState<Record<string, CalendarAccess>>({});
   const [trip, setTrip] = useState<TripState | null>(null);
   const [fakeCallScheduledAt, setFakeCallScheduledAt] = useState<number | null>(null);
   const [fakeCallActive, setFakeCallActive] = useState(false);
@@ -97,10 +86,6 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
   const addReport: Actions['addReport'] = useCallback((r) => {
     setReports((rs) => [{ ...r, id: nextId('r') }, ...rs]);
-  }, []);
-
-  const addEvent: Actions['addEvent'] = useCallback((e) => {
-    setEvents((es) => [...es, { ...e, id: nextId('e') }]);
   }, []);
 
   const setCalendarShare: Actions['setCalendarShare'] = useCallback((id, level) => {
@@ -122,7 +107,6 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       shareMode,
       visibleTo,
       reports,
-      events,
       calendarShares,
       trip,
       fakeCallScheduledAt,
@@ -132,7 +116,6 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       setShareMode,
       setVisibleTo,
       addReport,
-      addEvent,
       setCalendarShare,
       startTrip,
       endTrip,
@@ -147,7 +130,6 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       shareMode,
       visibleTo,
       reports,
-      events,
       calendarShares,
       trip,
       fakeCallScheduledAt,
@@ -156,7 +138,6 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       handleSetSharing,
       setVisibleTo,
       addReport,
-      addEvent,
       setCalendarShare,
       startTrip,
       endTrip,

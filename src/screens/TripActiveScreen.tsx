@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { ScrollView, View, Pressable } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ScrollView, View, Pressable, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import { useNavigation } from '@react-navigation/native';
@@ -9,10 +9,14 @@ import { IconChevron, IconLocate } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
 import { useTrips } from '../hooks/useTrips';
 import { useCircle } from '../hooks/useCircle';
+import { useCheckIns } from '../hooks/useCheckIns';
 import { useAuth } from '../state/Auth';
 import { supabase } from '../lib/supabase';
 import { palette } from '../theme/tokens';
 import { RootStackParamList } from '../navigation/types';
+
+// Grace period after ETA before the buddy/circle is auto-alerted.
+const ETA_GRACE_MS = 5 * 60 * 1000;
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 const EMOJI: Record<string, string> = { walk: '🚶', transit: '🚇', car: '🚗', taxi: '🚕' };
@@ -22,12 +26,15 @@ export function TripActiveScreen() {
   const nav = useNavigation<Nav>();
   const { activeTrip, loading, finish } = useTrips();
   const { members } = useCircle();
+  const { recordAlarm } = useCheckIns();
   const { user } = useAuth();
   const [now, setNow] = useState(Date.now());
   const [lastSent, setLastSent] = useState<Date | null>(null);
   const [nextIn, setNextIn] = useState<number | null>(null); // seconds until next send
+  const [etaHandled, setEtaHandled] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const escalateRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Compute the actual ETA timestamp from the "HH:MM" string + started_at date
   const etaTimestamp = React.useMemo(() => {
@@ -53,6 +60,62 @@ export function TripActiveScreen() {
     // Tick every 5s — fine-grained enough for the progress bar without burning battery
     const id = setInterval(() => setNow(Date.now()), 5000);
     return () => clearInterval(id);
+  }, []);
+
+  // Auto-escalation: alert the circle and raise the alarm.
+  const escalate = useCallback(async () => {
+    if (escalateRef.current) {
+      clearTimeout(escalateRef.current);
+      escalateRef.current = null;
+    }
+    const dest = activeTrip?.destination ?? 'their destination';
+    await recordAlarm(`Missed trip ETA to ${dest} — auto-escalated`);
+    await finish('escalated');
+    nav.replace('AlarmActive');
+  }, [activeTrip?.destination, recordAlarm, finish, nav]);
+
+  // When the ETA passes, prompt the user once and start a grace timer. If they
+  // don't confirm they're safe within the grace window, escalate automatically.
+  useEffect(() => {
+    if (!etaTimestamp || etaHandled) return;
+    if (now < etaTimestamp) return;
+
+    setEtaHandled(true);
+    const buddyName =
+      members.find((m) => m.profile.id === activeTrip?.buddy_id)?.profile.name ?? 'your circle';
+
+    escalateRef.current = setTimeout(escalate, ETA_GRACE_MS);
+
+    Alert.alert(
+      '🌙 You’ve reached your ETA',
+      `Are you safe? If you don’t respond, ${buddyName} will be alerted and your live location shared in 5 minutes.`,
+      [
+        {
+          text: 'I arrived safe',
+          onPress: async () => {
+            if (escalateRef.current) {
+              clearTimeout(escalateRef.current);
+              escalateRef.current = null;
+            }
+            await finish('arrived');
+            nav.goBack();
+          },
+        },
+        {
+          text: '🚨 Need help',
+          style: 'destructive',
+          onPress: escalate,
+        },
+      ],
+      { cancelable: false },
+    );
+  }, [now, etaTimestamp, etaHandled, members, activeTrip?.buddy_id, escalate, finish, nav]);
+
+  // Clear any pending escalation timer if the screen unmounts.
+  useEffect(() => {
+    return () => {
+      if (escalateRef.current) clearTimeout(escalateRef.current);
+    };
   }, []);
 
   // Trip location broadcast at chosen interval

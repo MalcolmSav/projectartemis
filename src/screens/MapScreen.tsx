@@ -1,15 +1,17 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Pressable, TextInput, Platform, Image } from 'react-native';
-import MapView, { Marker, Circle as MapCircle, PROVIDER_DEFAULT } from 'react-native-maps';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { View, Pressable, TextInput, Image } from 'react-native';
+import MapView, { Marker, Circle as MapCircle, PROVIDER_DEFAULT, Region } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text, Eyebrow, PillButton, BottomSheet, Toggle } from '../components';
 import { RootStackParamList } from '../navigation/types';
 import { ArtemisMark, IconLocate, IconWarn } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
 import { useReports, DBReport } from '../hooks/useReports';
+import { useAuth } from '../state/Auth';
 import { useCircle } from '../hooks/useCircle';
 import { usePresence } from '../hooks/usePresence';
 import { ReportKind } from '../data/demo';
@@ -23,6 +25,8 @@ const REPORT_HEX: Record<ReportKind, string> = {
 
 // Stockholm fallback if location denied
 const FALLBACK = { latitude: 59.3293, longitude: 18.0686 };
+
+type LatLng = { latitude: number; longitude: number };
 
 // Pastel forest map style — mute saturation, ivory base, forest-green roads.
 const MAP_STYLE_LIGHT = [
@@ -55,16 +59,23 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 export function MapScreen() {
   const t = useTheme();
   const nav = useNavigation<Nav>();
-  const { reports, addReport } = useReports();
+  const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+  const { reports, addReport, deleteReport } = useReports();
   const { members } = useCircle();
   const { byUser: presenceByUser } = usePresence();
   const [filter, setFilter] = useState<'all' | ReportKind>('all');
   const mapRef = useRef<MapView | null>(null);
-  const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [coords, setCoords] = useState<LatLng | null>(null);
   const [permDenied, setPermDenied] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [selected, setSelected] = useState<DBReport | null>(null);
   const [showLayer, setShowLayer] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Location picking mode
+  const [pickingLocation, setPickingLocation] = useState(false);
+  const [pickedCenter, setPickedCenter] = useState<LatLng | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -79,10 +90,8 @@ export function MapScreen() {
     })();
   }, []);
 
-  // Reports already have real lat/lng from the DB.
-  const reportCoords = filter === 'all' ? reports : reports.filter((r) => r.kind === filter);
+  const visibleReports = filter === 'all' ? reports : reports.filter((r) => r.kind === filter);
 
-  // Real circle members — pull live coords from presence table (include stale for last-known pin).
   const circleCoords = useMemo(() => {
     return members
       .map((m) => {
@@ -118,6 +127,46 @@ export function MapScreen() {
     );
   };
 
+  const enterPickMode = useCallback(() => {
+    setPickedCenter(coords ?? FALLBACK);
+    setPickingLocation(true);
+  }, [coords]);
+
+  const handleLongPress = useCallback((e: any) => {
+    const { coordinate } = e.nativeEvent as { coordinate: LatLng };
+    setPickedCenter(coordinate);
+    setPickingLocation(true);
+    mapRef.current?.animateToRegion(
+      { ...coordinate, latitudeDelta: 0.01, longitudeDelta: 0.01 },
+      300,
+    );
+  }, []);
+
+  const handleRegionChangeComplete = useCallback((region: Region) => {
+    if (pickingLocation) {
+      setPickedCenter({ latitude: region.latitude, longitude: region.longitude });
+    }
+  }, [pickingLocation]);
+
+  const confirmLocation = () => {
+    setPickingLocation(false);
+    setReportOpen(true);
+  };
+
+  const cancelPicking = () => {
+    setPickingLocation(false);
+    setPickedCenter(null);
+  };
+
+  const handleDeleteReport = async (id: string) => {
+    setDeletingId(id);
+    await deleteReport(id);
+    setDeletingId(null);
+    setSelected(null);
+  };
+
+  const reportLoc = pickedCenter ?? coords ?? FALLBACK;
+
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.ivoryBg }}>
       {coords && (
@@ -131,9 +180,11 @@ export function MapScreen() {
           showsCompass={false}
           showsPointsOfInterest={false}
           customMapStyle={t.mode === 'night' ? MAP_STYLE_NIGHT : MAP_STYLE_LIGHT}
+          onRegionChangeComplete={handleRegionChangeComplete}
+          onLongPress={handleLongPress}
         >
           {showLayer &&
-            reportCoords.map((r) => (
+            visibleReports.map((r) => (
               <React.Fragment key={r.id}>
                 <MapCircle
                   center={{ latitude: r.lat, longitude: r.lng }}
@@ -248,6 +299,58 @@ export function MapScreen() {
         </MapView>
       )}
 
+      {/* Crosshair / drop-pin overlay during location picking */}
+      {pickingLocation && (
+        <View
+          pointerEvents="none"
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}
+        >
+          {/* Pin body */}
+          <View
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              backgroundColor: palette.gold500,
+              borderWidth: 3,
+              borderColor: '#fff',
+              alignItems: 'center',
+              justifyContent: 'center',
+              shadowColor: '#000',
+              shadowOpacity: 0.35,
+              shadowRadius: 6,
+              shadowOffset: { width: 0, height: 3 },
+              elevation: 6,
+            }}
+          >
+            <IconWarn size={16} color={palette.forest900} />
+          </View>
+          {/* Pin tail */}
+          <View
+            style={{
+              width: 0,
+              height: 0,
+              borderLeftWidth: 7,
+              borderRightWidth: 7,
+              borderTopWidth: 11,
+              borderLeftColor: 'transparent',
+              borderRightColor: 'transparent',
+              borderTopColor: palette.gold500,
+            }}
+          />
+          {/* Ground shadow */}
+          <View
+            style={{
+              width: 18,
+              height: 5,
+              borderRadius: 999,
+              backgroundColor: 'rgba(0,0,0,0.12)',
+              marginTop: 1,
+            }}
+          />
+        </View>
+      )}
+
       {/* Top floating chrome */}
       <View
         style={{
@@ -255,111 +358,134 @@ export function MapScreen() {
           top: 0,
           left: 0,
           right: 0,
-          paddingTop: 60,
+          paddingTop: insets.top + 12,
           paddingHorizontal: t.spacing.pageH,
           gap: 10,
         }}
       >
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+        {pickingLocation ? (
+          /* Picking mode instruction banner */
           <View
             style={[
               {
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 8,
                 backgroundColor: t.colors.parchment,
-                paddingVertical: 8,
-                paddingHorizontal: 14,
-                borderRadius: 999,
+                paddingVertical: 12,
+                paddingHorizontal: 16,
+                borderRadius: t.radii.md,
+                alignItems: 'center',
               },
               t.shadows.soft,
             ]}
           >
-            <ArtemisMark size={18} moonColor={t.colors.forest700} />
-            <Text variant="body" weight="semibold">
-              {permDenied ? 'Stockholm (default)' : 'Near you'}
+            <Text variant="small" weight="semibold">Drag the map to place your pin</Text>
+            <Text variant="meta" color={t.colors.inkMute} style={{ marginTop: 2 }}>
+              Long-press anywhere to jump straight there
             </Text>
           </View>
-          <Pressable
-            onPress={recenter}
-            style={[
-              {
-                width: 40,
-                height: 40,
-                borderRadius: 999,
-                backgroundColor: t.colors.parchment,
-                alignItems: 'center',
-                justifyContent: 'center',
-              },
-              t.shadows.soft,
-            ]}
-          >
-            <IconLocate color={t.colors.forest700} />
-          </Pressable>
-        </View>
+        ) : (
+          <>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <View
+                style={[
+                  {
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 8,
+                    backgroundColor: t.colors.parchment,
+                    paddingVertical: 8,
+                    paddingHorizontal: 14,
+                    borderRadius: 999,
+                  },
+                  t.shadows.soft,
+                ]}
+              >
+                <ArtemisMark size={18} moonColor={t.colors.forest700} />
+                <Text variant="body" weight="semibold">
+                  {permDenied ? 'Stockholm (default)' : 'Near you'}
+                </Text>
+              </View>
+              <Pressable
+                onPress={recenter}
+                style={[
+                  {
+                    width: 40,
+                    height: 40,
+                    borderRadius: 999,
+                    backgroundColor: t.colors.parchment,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  },
+                  t.shadows.soft,
+                ]}
+              >
+                <IconLocate color={t.colors.forest700} />
+              </Pressable>
+            </View>
 
-        <View
-          style={[
-            {
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 12,
-              backgroundColor: t.colors.parchment,
-              padding: 12,
-              borderRadius: t.radii.md,
-            },
-            t.shadows.soft,
-          ]}
-        >
-          <View style={{ flex: 1 }}>
-            <Text variant="small" weight="semibold">
-              Community Safety Layer
-            </Text>
-            <Text variant="meta" color={t.colors.inkMute}>
-              {reportCoords.length} reports {filter === 'all' ? 'nearby' : `(${filter})`}
-            </Text>
-          </View>
-          <Toggle on={showLayer} onChange={setShowLayer} />
-        </View>
+            <View
+              style={[
+                {
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 12,
+                  backgroundColor: t.colors.parchment,
+                  padding: 12,
+                  borderRadius: t.radii.md,
+                },
+                t.shadows.soft,
+              ]}
+            >
+              <View style={{ flex: 1 }}>
+                <Text variant="small" weight="semibold">
+                  Community Safety Layer
+                </Text>
+                <Text variant="meta" color={t.colors.inkMute}>
+                  {visibleReports.length} reports {filter === 'all' ? 'nearby' : `(${filter})`}
+                </Text>
+              </View>
+              <Toggle on={showLayer} onChange={setShowLayer} />
+            </View>
 
-        {showLayer && (
-          <View style={{ flexDirection: 'row', gap: 6 }}>
-            {(['all', 'red', 'yellow', 'green'] as const).map((k) => {
-              const active = filter === k;
-              const dot = k === 'all' ? null : (
-                <View
-                  style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: REPORT_HEX[k as ReportKind], marginRight: 6 }}
-                />
-              );
-              return (
-                <Pressable
-                  key={k}
-                  onPress={() => setFilter(k)}
-                  style={[
-                    {
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      paddingVertical: 8,
-                      paddingHorizontal: 12,
-                      borderRadius: 999,
-                      backgroundColor: active ? t.colors.forest700 : t.colors.parchment,
-                    },
-                    t.shadows.soft,
-                  ]}
-                >
-                  {dot}
-                  <Text variant="meta" weight="semibold" color={active ? palette.gold300 : t.colors.inkSoft}>
-                    {k === 'all' ? 'All' : k.charAt(0).toUpperCase() + k.slice(1)}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+            {showLayer && (
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                {(['all', 'red', 'yellow', 'green'] as const).map((k) => {
+                  const active = filter === k;
+                  const dot = k === 'all' ? null : (
+                    <View
+                      style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: REPORT_HEX[k as ReportKind], marginRight: 6 }}
+                    />
+                  );
+                  return (
+                    <Pressable
+                      key={k}
+                      onPress={() => setFilter(k)}
+                      style={[
+                        {
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          paddingVertical: 8,
+                          paddingHorizontal: 12,
+                          borderRadius: 999,
+                          backgroundColor: active ? t.colors.forest700 : t.colors.parchment,
+                        },
+                        t.shadows.soft,
+                      ]}
+                    >
+                      {dot}
+                      <Text variant="meta" weight="semibold" color={active ? palette.gold300 : t.colors.inkSoft}>
+                        {k === 'all' ? 'All' : k.charAt(0).toUpperCase() + k.slice(1)}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
+          </>
         )}
       </View>
 
-      {/* Friends-not-sharing hint — only when NO presence at all (not even stale) */}
-      {circleCoords.length === 0 && members.length > 0 && (
+      {/* Friends-not-sharing hint */}
+      {!pickingLocation && circleCoords.length === 0 && members.length > 0 && (
         <View
           style={[
             {
@@ -383,31 +509,61 @@ export function MapScreen() {
         </View>
       )}
 
-      {/* Floating report button */}
-      <Pressable
-        onPress={() => setReportOpen(true)}
-        style={[
-          {
-            position: 'absolute',
-            right: t.spacing.pageH,
-            bottom: 100,
-            paddingVertical: 12,
-            paddingHorizontal: 18,
-            borderRadius: 999,
-            backgroundColor: palette.gold500,
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 8,
-          },
-          t.shadows.card,
-        ]}
-      >
-        <IconWarn size={16} color={palette.forest900} />
-        <Text variant="small" weight="semibold" color={palette.forest900}>
-          Report this area
-        </Text>
-      </Pressable>
+      {/* Picking mode bottom action bar — sits above the floating tab bar */}
+      {pickingLocation && (
+        <View
+          style={[
+            {
+              position: 'absolute',
+              bottom: t.spacing.tabBarBottom + 64 + 12,
+              left: t.spacing.pageH,
+              right: t.spacing.pageH,
+              backgroundColor: t.colors.parchment,
+              padding: 12,
+              borderRadius: t.radii.lg,
+            },
+            t.shadows.card,
+          ]}
+        >
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <PillButton variant="ghost" style={{ flex: 1 }} onPress={cancelPicking}>
+              Cancel
+            </PillButton>
+            <PillButton style={{ flex: 1 }} onPress={confirmLocation}>
+              Report here
+            </PillButton>
+          </View>
+        </View>
+      )}
 
+      {/* Floating report button (normal mode) */}
+      {!pickingLocation && (
+        <Pressable
+          onPress={enterPickMode}
+          style={[
+            {
+              position: 'absolute',
+              right: t.spacing.pageH,
+              bottom: 100,
+              paddingVertical: 12,
+              paddingHorizontal: 18,
+              borderRadius: 999,
+              backgroundColor: palette.gold500,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+            },
+            t.shadows.card,
+          ]}
+        >
+          <IconWarn size={16} color={palette.forest900} />
+          <Text variant="small" weight="semibold" color={palette.forest900}>
+            Report this area
+          </Text>
+        </Pressable>
+      )}
+
+      {/* Selected report detail sheet */}
       <BottomSheet visible={!!selected} onClose={() => setSelected(null)}>
         {selected && (
           <View>
@@ -418,11 +574,42 @@ export function MapScreen() {
               <Text variant="body" weight="semibold">
                 {selected.label}
               </Text>
+              <View
+                style={{
+                  marginLeft: 'auto',
+                  paddingHorizontal: 8,
+                  paddingVertical: 3,
+                  borderRadius: 999,
+                  backgroundColor: `${REPORT_HEX[selected.kind as ReportKind]}22`,
+                }}
+              >
+                <Text variant="meta" color={REPORT_HEX[selected.kind as ReportKind]}>
+                  {selected.kind === 'red' ? 'Unsafe' : selected.kind === 'yellow' ? 'Uneasy' : 'Safe'}
+                </Text>
+              </View>
             </View>
-            <Text variant="small" color={t.colors.inkSoft}>
-              {selected.area ?? 'Unknown area'} · {new Date(selected.created_at).toLocaleString()}
+            {selected.area ? (
+              <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 4 }}>
+                {selected.area}
+              </Text>
+            ) : null}
+            <Text variant="meta" color={t.colors.inkMute} style={{ marginBottom: 16 }}>
+              {selected.anon ? 'Anonymous report' : 'Community report'} · {new Date(selected.created_at).toLocaleString()}
             </Text>
-            <PillButton block style={{ marginTop: 16 }} onPress={() => setSelected(null)}>
+            {selected.user_id && selected.user_id === user?.id && (
+              <PillButton
+                variant="ghost"
+                block
+                style={{ marginBottom: 8, borderColor: t.colors.crimson }}
+                disabled={deletingId === selected.id}
+                onPress={() => handleDeleteReport(selected.id)}
+              >
+                <Text variant="small" weight="semibold" color={t.colors.crimson}>
+                  {deletingId === selected.id ? 'Deleting…' : 'Delete my report'}
+                </Text>
+              </PillButton>
+            )}
+            <PillButton block onPress={() => setSelected(null)}>
               Close
             </PillButton>
           </View>
@@ -431,18 +618,20 @@ export function MapScreen() {
 
       <ReportSheet
         open={reportOpen}
-        onClose={() => setReportOpen(false)}
+        onClose={() => {
+          setReportOpen(false);
+          setPickedCenter(null);
+        }}
         onSubmit={async (r) => {
-          if (!coords) return;
-          await addReport({
+          const res = await addReport({
             kind: r.kind,
             label: r.label,
-            area: r.area,
-            lat: coords.latitude,
-            lng: coords.longitude,
+            notes: r.notes,
+            lat: reportLoc.latitude,
+            lng: reportLoc.longitude,
             anon: r.anon,
           });
-          setReportOpen(false);
+          return res;
         }}
       />
     </View>
@@ -456,13 +645,41 @@ function ReportSheet({
 }: {
   open: boolean;
   onClose: () => void;
-  onSubmit: (r: { kind: ReportKind; label: string; area: string; anon: boolean }) => void;
+  onSubmit: (r: { kind: ReportKind; label: string; notes: string; anon: boolean }) => Promise<{ error?: string }>;
 }) {
   const t = useTheme();
   const [kind, setKind] = useState<ReportKind>('yellow');
   const [type, setType] = useState('Followed');
   const [notes, setNotes] = useState('');
   const [anon, setAnon] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [submitErr, setSubmitErr] = useState<string | null>(null);
+
+  // Reset state when sheet closes
+  const handleClose = () => {
+    setSubmitted(false);
+    setSubmitErr(null);
+    setKind('yellow');
+    setType('Followed');
+    setNotes('');
+    setAnon(true);
+    setBusy(false);
+    onClose();
+  };
+
+  const handleSubmit = async () => {
+    setBusy(true);
+    setSubmitErr(null);
+    const res = await onSubmit({ kind, label: type, notes, anon });
+    setBusy(false);
+    if (res.error) {
+      setSubmitErr(res.error);
+    } else {
+      setSubmitted(true);
+      setTimeout(handleClose, 1800);
+    }
+  };
 
   const SEVERITY: { id: ReportKind; label: string }[] = [
     { id: 'yellow', label: 'Felt uneasy' },
@@ -472,100 +689,123 @@ function ReportSheet({
   const TYPES = ['Followed', 'Harassment', 'Poorly lit', 'Other'];
 
   return (
-    <BottomSheet visible={open} onClose={onClose}>
-      <Text style={{ fontFamily: t.type.display, fontSize: 24, marginBottom: 4 }}>Report this area</Text>
-      <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 16 }}>
-        Helps your circle and other Artemis users navigate safely.
-      </Text>
+    <BottomSheet visible={open} onClose={handleClose}>
+      {submitted ? (
+        <View style={{ alignItems: 'center', paddingVertical: 24 }}>
+          <View
+            style={{
+              width: 56,
+              height: 56,
+              borderRadius: 28,
+              backgroundColor: `${REPORT_HEX[kind]}22`,
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: 14,
+            }}
+          >
+            <Text style={{ fontSize: 24 }}>✓</Text>
+          </View>
+          <Text style={{ fontFamily: t.type.display, fontSize: 22, marginBottom: 6 }}>
+            Report submitted
+          </Text>
+          <Text variant="small" color={t.colors.inkSoft} style={{ textAlign: 'center' }}>
+            Thanks for helping keep the community safe.
+          </Text>
+        </View>
+      ) : (
+        <>
+          <Text style={{ fontFamily: t.type.display, fontSize: 24, marginBottom: 4 }}>Report this area</Text>
+          <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 16 }}>
+            Helps your circle and other Artemis users navigate safely.
+          </Text>
 
-      <Eyebrow style={{ marginBottom: 6 }}>SEVERITY</Eyebrow>
-      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 16 }}>
-        {SEVERITY.map((s) => {
-          const active = kind === s.id;
-          return (
-            <Pressable
-              key={s.id}
-              onPress={() => setKind(s.id)}
-              style={{
-                flex: 1,
-                paddingVertical: 12,
-                borderRadius: 999,
-                backgroundColor: active ? t.colors.forest700 : t.colors.moonlight,
-                alignItems: 'center',
-              }}
-            >
-              <Text variant="small" weight="semibold" color={active ? palette.gold300 : t.colors.inkSoft}>
-                {s.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+          <Eyebrow style={{ marginBottom: 6 }}>SEVERITY</Eyebrow>
+          <View style={{ flexDirection: 'row', gap: 6, marginBottom: 16 }}>
+            {SEVERITY.map((s) => {
+              const active = kind === s.id;
+              return (
+                <Pressable
+                  key={s.id}
+                  onPress={() => setKind(s.id)}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 12,
+                    borderRadius: 999,
+                    backgroundColor: active ? t.colors.forest700 : t.colors.moonlight,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text variant="small" weight="semibold" color={active ? palette.gold300 : t.colors.inkSoft}>
+                    {s.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
 
-      <Eyebrow style={{ marginBottom: 6 }}>WHAT HAPPENED</Eyebrow>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
-        {TYPES.map((tt) => {
-          const active = type === tt;
-          return (
-            <Pressable
-              key={tt}
-              onPress={() => setType(tt)}
-              style={{
-                paddingVertical: 8,
-                paddingHorizontal: 14,
-                borderRadius: 999,
-                backgroundColor: active ? t.colors.forest700 : t.colors.moonlight,
-              }}
-            >
-              <Text variant="small" weight="semibold" color={active ? palette.gold300 : t.colors.inkSoft}>
-                {tt}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+          <Eyebrow style={{ marginBottom: 6 }}>WHAT HAPPENED</Eyebrow>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
+            {TYPES.map((tt) => {
+              const active = type === tt;
+              return (
+                <Pressable
+                  key={tt}
+                  onPress={() => setType(tt)}
+                  style={{
+                    paddingVertical: 8,
+                    paddingHorizontal: 14,
+                    borderRadius: 999,
+                    backgroundColor: active ? t.colors.forest700 : t.colors.moonlight,
+                  }}
+                >
+                  <Text variant="small" weight="semibold" color={active ? palette.gold300 : t.colors.inkSoft}>
+                    {tt}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
 
-      <Eyebrow style={{ marginBottom: 6 }}>NOTES</Eyebrow>
-      <TextInput
-        value={notes}
-        onChangeText={setNotes}
-        placeholder="Optional details — what made you uneasy?"
-        placeholderTextColor={t.colors.inkMute}
-        multiline
-        style={{
-          backgroundColor: t.colors.moonlight,
-          borderRadius: t.radii.md,
-          padding: 12,
-          minHeight: 80,
-          fontFamily: t.type.body,
-          color: t.colors.ink,
-          marginBottom: 12,
-        }}
-      />
+          <Eyebrow style={{ marginBottom: 6 }}>NOTES</Eyebrow>
+          <TextInput
+            value={notes}
+            onChangeText={setNotes}
+            placeholder="Optional details — what made you uneasy?"
+            placeholderTextColor={t.colors.inkMute}
+            multiline
+            style={{
+              backgroundColor: t.colors.moonlight,
+              borderRadius: t.radii.md,
+              padding: 12,
+              minHeight: 80,
+              fontFamily: t.type.body,
+              color: t.colors.ink,
+              marginBottom: 12,
+              textAlignVertical: 'top',
+            }}
+          />
 
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Text variant="small">Submit anonymously</Text>
-        <Toggle on={anon} onChange={setAnon} />
-      </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+            <Text variant="small">Submit anonymously</Text>
+            <Toggle on={anon} onChange={setAnon} />
+          </View>
 
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        <PillButton variant="ghost" style={{ flex: 1 }} onPress={onClose}>
-          Cancel
-        </PillButton>
-        <PillButton
-          style={{ flex: 1 }}
-          onPress={() =>
-            onSubmit({
-              kind,
-              label: type,
-              area: 'Near you',
-              anon,
-            })
-          }
-        >
-          Submit
-        </PillButton>
-      </View>
+          {submitErr && (
+            <Text variant="small" color={t.colors.crimson} style={{ marginBottom: 10 }}>
+              {submitErr}
+            </Text>
+          )}
+
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <PillButton variant="ghost" style={{ flex: 1 }} onPress={handleClose} disabled={busy}>
+              Cancel
+            </PillButton>
+            <PillButton style={{ flex: 1 }} onPress={handleSubmit} disabled={busy}>
+              {busy ? 'Submitting…' : 'Submit'}
+            </PillButton>
+          </View>
+        </>
+      )}
     </BottomSheet>
   );
 }

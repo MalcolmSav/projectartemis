@@ -14,6 +14,7 @@ const Tab = createBottomTabNavigator();
 
 export function RootTabs() {
   const t = useTheme();
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -39,16 +40,11 @@ export function RootTabs() {
           const c = focused ? palette.gold500 : t.colors.inkMute;
           const props = { size: 22, color: c };
           switch (route.name) {
-            case 'Home':
-              return <IconHome {...props} />;
-            case 'Map':
-              return <IconMap {...props} />;
-            case 'Circle':
-              return <IconCircle {...props} />;
-            case 'Calendar':
-              return <IconCal {...props} />;
-            case 'Profile':
-              return <IconUser {...props} />;
+            case 'Home':     return <IconHome {...props} />;
+            case 'Map':      return <IconMap {...props} />;
+            case 'Circle':   return <IconCircle {...props} />;
+            case 'Calendar': return <IconCal {...props} />;
+            case 'Profile':  return <IconUser {...props} />;
           }
           return <View />;
         },

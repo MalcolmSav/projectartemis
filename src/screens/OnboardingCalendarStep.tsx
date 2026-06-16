@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ScrollView, TextInput, View } from 'react-native';
+import { ScrollView, TextInput, View, KeyboardAvoidingView, Platform } from 'react-native';
 import { Text, Eyebrow, PillButton, Card } from '../components';
 import { useTheme } from '../theme/ThemeProvider';
 import { useEvents } from '../hooks/useEvents';
@@ -62,26 +62,28 @@ export function OnboardingCalendarStep({ onComplete }: { onComplete: () => void 
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: t.colors.ivoryBg }}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ flex: 1, backgroundColor: t.colors.ivoryBg }}
+    >
       <ScrollView contentContainerStyle={{ padding: t.spacing.pageH, paddingTop: 70 }} keyboardShouldPersistTaps="handled">
         <Eyebrow style={{ marginBottom: 6 }}>CALENDAR</Eyebrow>
         <Text variant="displayH1" style={{ marginBottom: 8 }}>
-          Add hard-to-reach{' '}
+          Going somewhere you'll be{' '}
           <Text variant="displayH1" italic accent>
-            moments.
+            hard to reach?
           </Text>
         </Text>
         <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 22 }}>
-          Artemis calendar is for situations where your circle should know you may not answer, like a concert, cinema,
-          exam, shift, flight, or appointment. You do not need to add your normal everyday calendar.
+          Add it here so your circle knows. Concert, late shift, cinema, flight — anything where you might not pick up. They won't worry if they already know.
         </Text>
 
         <Card style={{ marginBottom: 22 }}>
           <Text variant="body" weight="semibold" style={{ marginBottom: 8 }}>
-            Optional first event
+            Add your first one (optional)
           </Text>
           <Text variant="small" color={t.colors.inkSoft}>
-            Leave the title empty to skip this for now. Events added here automatically expect a check-in.
+            Nothing coming up? Skip for now. You can always add events later from the calendar tab.
           </Text>
         </Card>
 
@@ -131,6 +133,6 @@ export function OnboardingCalendarStep({ onComplete }: { onComplete: () => void 
           {busy ? 'Saving...' : title.trim() ? 'Add and continue' : 'Skip for now'}
         </PillButton>
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }

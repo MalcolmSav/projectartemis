@@ -11,6 +11,7 @@ export type RootStackParamList = {
   FakeCallOnCall: undefined;
   WellnessIncoming: { fromName?: string } | undefined;
   AlarmActive: undefined;
+  EmergencyCall: undefined;
 };
 
 declare global {

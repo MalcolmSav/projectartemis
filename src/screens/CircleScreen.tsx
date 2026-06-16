@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { ScrollView, View, Pressable, TextInput, ActivityIndicator, Alert, RefreshControl } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { TopBar, Text, Eyebrow, Avatar, Card, PillButton, BottomSheet } from '../components';
+import { TopBar, Text, Eyebrow, Avatar, Card, PillButton, BottomSheet, Divider } from '../components';
 import { IconPlus, IconChevron, BowArrow } from '../components/icons';
+import { supabase, Profile } from '../lib/supabase';
 import { useTheme } from '../theme/ThemeProvider';
 import { palette } from '../theme/tokens';
 import { useCircle } from '../hooks/useCircle';
@@ -132,9 +133,9 @@ export function CircleScreen() {
           <View style={{ alignItems: 'center', paddingVertical: 40 }}>
             <Text variant="body" color={t.colors.inkSoft} style={{ textAlign: 'center', marginBottom: 18 }}>
               Your circle is empty.
-              {'\n'}Invite someone you trust by sending an email invite.
+              {'\n'}Search for someone by their Artemis username to add them.
             </Text>
-            <PillButton onPress={() => setAddOpen(true)}>+ Invite by email</PillButton>
+            <PillButton onPress={() => setAddOpen(true)}>+ Add someone</PillButton>
           </View>
         ) : (
           <View style={{ gap: 4 }}>
@@ -213,55 +214,153 @@ function InviteSheet({
   onSubmit: (email: string, relation: string | null) => Promise<{ error?: string }>;
 }) {
   const t = useTheme();
-  const [email, setEmail] = useState('');
+  const { user } = useAuth();
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<Profile[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [selected, setSelected] = useState<Profile | null>(null);
   const [relation, setRelation] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
+  const search = async (q: string) => {
+    const trimmed = q.trim().toLowerCase().replace(/^@/, '');
+    if (trimmed.length < 2) { setResults([]); return; }
+    setSearching(true);
+    const { data } = await supabase
+      .from('profiles')
+      .select('*')
+      .or(`username.ilike.%${trimmed}%,name.ilike.%${trimmed}%`)
+      .neq('id', user?.id ?? '')
+      .limit(8);
+    setResults((data ?? []) as Profile[]);
+    setSearching(false);
+  };
+
+  const pickUser = (p: Profile) => {
+    setSelected(p);
+    setQuery('');
+    setResults([]);
+    setErr(null);
+  };
+
+  const handleClose = () => {
+    setQuery('');
+    setSelected(null);
+    setResults([]);
+    setErr(null);
+    setDone(false);
+    setRelation('');
+    onClose();
+  };
+
   const submit = async () => {
+    if (!selected) { setErr('Search for and select a person first.'); return; }
     setBusy(true);
     setErr(null);
-    const res = await onSubmit(email, relation || null);
+    const res = await onSubmit(selected.email, relation || null);
     setBusy(false);
     if (res.error) setErr(res.error);
     else {
       setDone(true);
       setTimeout(() => {
         setDone(false);
-        setEmail('');
-        setRelation('');
-        onClose();
-      }, 1200);
+        handleClose();
+      }, 1400);
     }
   };
 
   return (
-    <BottomSheet visible={open} onClose={onClose}>
-      <Text style={{ fontFamily: t.type.display, fontSize: 24, marginBottom: 4 }}>Invite to circle</Text>
+    <BottomSheet visible={open} onClose={handleClose}>
+      <Text style={{ fontFamily: t.type.display, fontSize: 24, marginBottom: 4 }}>Add to circle</Text>
       <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 16 }}>
-        They'll see your invite when they sign in. Once accepted, you'll see each other's check-ins.
+        Search by username or name. They'll get a notification and can accept your invite.
       </Text>
 
-      <Eyebrow style={{ marginBottom: 6 }}>EMAIL</Eyebrow>
-      <TextInput
-        value={email}
-        onChangeText={setEmail}
-        placeholder="them@example.com"
-        placeholderTextColor={t.colors.inkMute}
-        autoCapitalize="none"
-        keyboardType="email-address"
-        style={{
-          backgroundColor: t.colors.moonlight,
-          borderRadius: t.radii.md,
-          padding: 14,
-          fontFamily: t.type.body,
-          color: t.colors.ink,
-          marginBottom: 14,
-        }}
-      />
+      <Eyebrow style={{ marginBottom: 6 }}>FIND BY USERNAME</Eyebrow>
 
-      <Eyebrow style={{ marginBottom: 6 }}>RELATION (OPTIONAL)</Eyebrow>
+      {selected ? (
+        /* Confirmed person chip */
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 10,
+            backgroundColor: t.colors.moonlight,
+            borderRadius: t.radii.md,
+            padding: 12,
+            marginBottom: 14,
+          }}
+        >
+          <Avatar name={selected.name ?? selected.email} size={40} photoUri={selected.avatar_url ?? undefined} />
+          <View style={{ flex: 1 }}>
+            <Text variant="body" weight="semibold">{selected.name ?? selected.email}</Text>
+            {selected.username && (
+              <Text variant="meta" color={t.colors.inkMute}>@{selected.username}</Text>
+            )}
+          </View>
+          <Pressable onPress={() => setSelected(null)} hitSlop={10}>
+            <Text variant="small" color={t.colors.crimson} weight="semibold">✕</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <>
+          <View style={{ position: 'relative', marginBottom: 6 }}>
+            <TextInput
+              value={query}
+              onChangeText={(v) => { setQuery(v); search(v); }}
+              placeholder="@username or name"
+              placeholderTextColor={t.colors.inkMute}
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={{
+                backgroundColor: t.colors.moonlight,
+                borderRadius: t.radii.md,
+                padding: 14,
+                fontFamily: t.type.body,
+                color: t.colors.ink,
+              }}
+            />
+            {searching && (
+              <View style={{ position: 'absolute', right: 14, top: 14 }}>
+                <ActivityIndicator size="small" color={t.colors.forest700} />
+              </View>
+            )}
+          </View>
+
+          {results.length > 0 && (
+            <Card style={{ marginBottom: 14 }}>
+              {results.map((p, i) => (
+                <View key={p.id}>
+                  <Pressable
+                    onPress={() => pickUser(p)}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 }}
+                  >
+                    <Avatar name={p.name ?? p.email} size={38} photoUri={p.avatar_url ?? undefined} />
+                    <View style={{ flex: 1 }}>
+                      <Text variant="body" weight="semibold">{p.name ?? p.email}</Text>
+                      {p.username && (
+                        <Text variant="meta" color={t.colors.inkMute}>@{p.username}</Text>
+                      )}
+                    </View>
+                    <Text variant="small" color={t.colors.gold700} weight="semibold">Add</Text>
+                  </Pressable>
+                  {i < results.length - 1 && <Divider />}
+                </View>
+              ))}
+            </Card>
+          )}
+
+          {query.trim().length > 1 && results.length === 0 && !searching && (
+            <Text variant="small" color={t.colors.inkMute} style={{ marginBottom: 10 }}>
+              No users found. Make sure you have their exact username.
+            </Text>
+          )}
+        </>
+      )}
+
+      <Eyebrow style={{ marginBottom: 6, marginTop: 4 }}>RELATION (OPTIONAL)</Eyebrow>
       <TextInput
         value={relation}
         onChangeText={setRelation}
@@ -284,15 +383,15 @@ function InviteSheet({
       )}
       {done && (
         <Text variant="small" color={t.colors.statusOk} style={{ marginBottom: 10 }}>
-          Invite sent ✓
+          Invite sent — they'll see it in their notifications ✓
         </Text>
       )}
 
       <View style={{ flexDirection: 'row', gap: 8 }}>
-        <PillButton variant="ghost" style={{ flex: 1 }} onPress={onClose}>
+        <PillButton variant="ghost" style={{ flex: 1 }} onPress={handleClose} disabled={busy}>
           Cancel
         </PillButton>
-        <PillButton style={{ flex: 1 }} onPress={submit} disabled={busy || !email}>
+        <PillButton style={{ flex: 1 }} onPress={submit} disabled={busy || !selected}>
           {busy ? 'Sending…' : 'Send invite'}
         </PillButton>
       </View>

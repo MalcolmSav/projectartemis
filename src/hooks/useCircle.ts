@@ -84,12 +84,26 @@ export function useCircle() {
       if (!email) return { error: 'Enter an email' };
       if (email === user.email?.toLowerCase()) return { error: "You can't invite yourself" };
 
-      // If recipient already exists, we can short-circuit and create the edge directly via auto-accept.
-      // For safety/consent we'll still create an invite; the recipient sees it in their app.
+      const { data: senderProfile } = await supabase
+        .from('profiles')
+        .select('name')
+        .eq('id', user.id)
+        .maybeSingle();
+
       const { error } = await supabase
         .from('invites')
         .insert({ from_user: user.id, to_email: email, relation });
       if (error) return { error: error.message };
+
+      // Fire-and-forget — email failure doesn't block the invite
+      supabase.functions.invoke('send-invite-email', {
+        body: {
+          to_email: email,
+          from_name: senderProfile?.name ?? user.email ?? 'Someone',
+          relation,
+        },
+      }).catch(() => {});
+
       return {};
     },
     [user],

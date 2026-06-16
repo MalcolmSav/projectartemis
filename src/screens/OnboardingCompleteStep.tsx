@@ -45,28 +45,28 @@ export function OnboardingCompleteStep({ onComplete }: { onComplete: () => void 
 
         <Card style={{ marginBottom: 32, width: '100%' }}>
           <View style={{ gap: 12 }}>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <Text style={{ fontSize: 20 }}>??</Text>
+            <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+              <Text style={{ fontSize: 18, color: t.colors.gold700 }}>✓</Text>
               <Text variant="body" weight="semibold">Circle members added</Text>
             </View>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <Text style={{ fontSize: 20 }}>?</Text>
+            <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+              <Text style={{ fontSize: 18, color: t.colors.gold700 }}>✓</Text>
               <Text variant="body" weight="semibold">Emergency contacts saved</Text>
             </View>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <Text style={{ fontSize: 20 }}>?</Text>
+            <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+              <Text style={{ fontSize: 18, color: t.colors.gold700 }}>✓</Text>
               <Text variant="body" weight="semibold">Wellness checks explained</Text>
             </View>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <Text style={{ fontSize: 20 }}>?</Text>
+            <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+              <Text style={{ fontSize: 18, color: t.colors.gold700 }}>✓</Text>
               <Text variant="body" weight="semibold">Hard-to-reach events reviewed</Text>
             </View>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <Text style={{ fontSize: 20 }}>??</Text>
+            <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+              <Text style={{ fontSize: 18, color: t.colors.gold700 }}>✓</Text>
               <Text variant="body" weight="semibold">Fake call ready</Text>
             </View>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <Text style={{ fontSize: 20 }}>??</Text>
+            <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+              <Text style={{ fontSize: 18, color: t.colors.gold700 }}>✓</Text>
               <Text variant="body" weight="semibold">Trip mode configured</Text>
             </View>
           </View>

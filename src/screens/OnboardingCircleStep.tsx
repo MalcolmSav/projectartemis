@@ -30,7 +30,7 @@ export function OnboardingCircleStep({ onComplete }: { onComplete: () => void })
     const { data } = await supabase
       .from('profiles')
       .select('*')
-      .or(`email.ilike.%${trimmed}%, username.ilike.%${trimmed}%`)
+      .or(`username.ilike.%${trimmed}%,name.ilike.%${trimmed}%`)
       .neq('id', profile.id)
       .limit(10);
 
@@ -86,7 +86,7 @@ export function OnboardingCircleStep({ onComplete }: { onComplete: () => void })
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={{ flex: 1, backgroundColor: t.colors.ivoryBg }}
     >
       <ScrollView contentContainerStyle={{ padding: t.spacing.pageH, paddingTop: 70 }} keyboardShouldPersistTaps="handled">
@@ -104,7 +104,7 @@ export function OnboardingCircleStep({ onComplete }: { onComplete: () => void })
         </Text>
 
         {/* Search Input */}
-        <Eyebrow style={{ marginBottom: 6 }}>SEARCH FOR PEOPLE</Eyebrow>
+        <Eyebrow style={{ marginBottom: 6 }}>FIND BY USERNAME</Eyebrow>
         <View style={{ position: 'relative', marginBottom: 22 }}>
           <TextInput
             value={searchQuery}
@@ -112,11 +112,10 @@ export function OnboardingCircleStep({ onComplete }: { onComplete: () => void })
               setSearchQuery(val);
               search(val);
             }}
-            placeholder="Email or username"
+            placeholder="@username or name"
             placeholderTextColor={t.colors.inkMute}
             autoCapitalize="none"
             autoCorrect={false}
-            keyboardType="email-address"
             style={inputStyle(t)}
           />
           {searching && (
@@ -161,7 +160,7 @@ export function OnboardingCircleStep({ onComplete }: { onComplete: () => void })
 
         {searchQuery.trim() && searchResults.length === 0 && !searching && (
           <Text variant="small" color={t.colors.inkMute} style={{ marginBottom: 22, textAlign: 'center' }}>
-            No people found. Try another search, or add them later by email.
+            No one found. Check the spelling or try their display name.
           </Text>
         )}
 

@@ -37,19 +37,22 @@ export function useReports() {
   useEffect(() => {
     const topic = `reports:${Math.random().toString(36).slice(2)}`;
     const ch = supabase.channel(topic);
-    ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'reports' }, refresh).subscribe();
+    ch
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'reports' }, refresh)
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'reports' }, refresh)
+      .subscribe();
     return () => {
       supabase.removeChannel(ch);
     };
   }, [refresh]);
 
   const addReport = useCallback(
-    async (r: { kind: 'yellow' | 'red' | 'green'; label: string; area?: string; lat: number; lng: number; anon?: boolean }) => {
+    async (r: { kind: 'yellow' | 'red' | 'green'; label: string; notes?: string; lat: number; lng: number; anon?: boolean }) => {
       const { error } = await supabase.from('reports').insert({
         user_id: r.anon ? null : user?.id ?? null,
         kind: r.kind,
         label: r.label,
-        area: r.area ?? null,
+        area: r.notes ?? null,
         lat: r.lat,
         lng: r.lng,
         anon: !!r.anon,
@@ -59,5 +62,14 @@ export function useReports() {
     [user],
   );
 
-  return { reports, loading, refresh, addReport };
+  const deleteReport = useCallback(
+    async (id: string) => {
+      const { error } = await supabase.from('reports').delete().eq('id', id);
+      if (!error) setReports((prev) => prev.filter((r) => r.id !== id));
+      return error ? { error: error.message } : {};
+    },
+    [],
+  );
+
+  return { reports, loading, refresh, addReport, deleteReport };
 }

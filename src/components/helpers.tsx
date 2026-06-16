@@ -99,7 +99,7 @@ export function CircleCard({
           </View>
         )}
       </View>
-      <Text variant="displayBodyS" weight="medium" style={{ fontSize: 19 }}>
+      <Text variant="large" weight="medium" style={{ fontSize: 19 }}>
         {person.name}
       </Text>
       <Text variant="meta" color={t.colors.inkMute}>
@@ -227,7 +227,7 @@ export function EventCard({ event }: { event: ArtemisEvent }) {
             </Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text variant="displayBodyS" weight="medium" style={{ fontFamily: t.type.display, fontSize: 18 }}>
+            <Text variant="large" weight="medium" style={{ fontFamily: t.type.display, fontSize: 18 }}>
               {event.title}
             </Text>
             <Text variant="small" color={t.colors.inkMute} style={{ marginTop: 2 }}>

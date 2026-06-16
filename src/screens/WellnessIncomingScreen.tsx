@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Pressable } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -13,8 +13,7 @@ import { useTheme } from '../theme/ThemeProvider';
 import { Text, Eyebrow, PillButton } from '../components';
 import { IconChevron } from '../components/icons';
 import { palette } from '../theme/tokens';
-import { supabase } from '../lib/supabase';
-import { useAuth } from '../state/Auth';
+import { useCheckIns } from '../hooks/useCheckIns';
 import { RootStackParamList } from '../navigation/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -24,26 +23,30 @@ const COUNTDOWN_MS = 30_000;
 export function WellnessIncomingScreen() {
   const t = useTheme();
   const nav = useNavigation<Nav>();
-  const { user } = useAuth();
   const route = useRoute<RouteProp<RootStackParamList, 'WellnessIncoming'>>();
-  const fromName = route.params?.fromName ?? 'Sara';
-
-  const respond = async (kind: 'wellness_response' | 'alarm', note: string) => {
-    if (!user) return;
-    await supabase.from('check_ins').insert({ user_id: user.id, kind, note });
-  };
+  const fromName = route.params?.fromName ?? 'Someone';
+  const { respondWellness } = useCheckIns();
+  const [busy, setBusy] = useState(false);
 
   const v = useSharedValue(1);
 
   useEffect(() => {
     v.value = withTiming(0, { duration: COUNTDOWN_MS, easing: Easing.linear });
-    const id = setTimeout(() => {
-      respond('wellness_response', 'no response — auto escalated').finally(() => nav.goBack());
-    }, COUNTDOWN_MS);
+    // On timeout: go back without inserting a fake response — sender will see "no response yet"
+    const id = setTimeout(() => nav.goBack(), COUNTDOWN_MS);
     return () => clearTimeout(id);
-  }, [nav, v]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const barStyle = useAnimatedStyle(() => ({ width: `${v.value * 100}%` }));
+
+  const respond = async (kind: 'ok' | 'wellness_response' | 'alarm', note: string) => {
+    if (busy) return;
+    setBusy(true);
+    await respondWellness(kind, note);
+    setBusy(false);
+    if (kind === 'alarm') nav.replace('AlarmActive');
+    else nav.goBack();
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.ivoryBg }}>
@@ -74,10 +77,10 @@ export function WellnessIncomingScreen() {
           <Text variant="displayH1" italic accent>
             {fromName}
           </Text>{' '}
-          wants to do a wellness check.
+          is checking in on you.
         </Text>
-        <Text variant="bodyS" color={t.colors.inkSoft} style={{ textAlign: 'center', marginBottom: 24 }}>
-          Tap a response. Auto-escalates in {COUNTDOWN_MS / 1000}s.
+        <Text variant="small" color={t.colors.inkSoft} style={{ textAlign: 'center', marginBottom: 24 }}>
+          Tap a response before the timer runs out.
         </Text>
 
         <View
@@ -98,10 +101,8 @@ export function WellnessIncomingScreen() {
         <PillButton
           size="lg"
           block
-          onPress={async () => {
-            await respond('wellness_response', 'all good');
-            nav.goBack();
-          }}
+          disabled={busy}
+          onPress={() => respond('ok', 'All good')}
         >
           ✅  All good!
         </PillButton>
@@ -109,22 +110,18 @@ export function WellnessIncomingScreen() {
           variant="secondary"
           size="lg"
           block
-          onPress={async () => {
-            await respond('wellness_response', `need help — sharing with ${fromName}`);
-            nav.goBack();
-          }}
+          disabled={busy}
+          onPress={() => respond('wellness_response', `need_help`)}
           style={{ backgroundColor: t.colors.gold100 }}
         >
-          ⚠️  Need help · share with {fromName}
+          ⚠️  I need help · let {fromName} know
         </PillButton>
         <PillButton
           variant="danger"
           size="lg"
           block
-          onPress={async () => {
-            await respond('alarm', 'manual alarm from wellness check');
-            nav.replace('AlarmActive');
-          }}
+          disabled={busy}
+          onPress={() => respond('alarm', 'Alarm from wellness check')}
         >
           🚨  ALARM · alert entire circle
         </PillButton>
