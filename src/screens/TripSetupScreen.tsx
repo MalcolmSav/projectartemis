@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ScrollView, View, Pressable, TextInput } from 'react-native';
+import { ScrollView, View, Pressable, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Text, Eyebrow, Card, PillButton, Avatar, BottomSheet } from '../components';
@@ -56,7 +56,10 @@ export function TripSetupScreen() {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: t.colors.ivoryBg }}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ flex: 1, backgroundColor: t.colors.ivoryBg }}
+    >
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 60, paddingHorizontal: 22, paddingBottom: 12 }}>
         <Pressable onPress={() => nav.goBack()} style={{ padding: 6, marginRight: 6 }} accessibilityLabel="Back">
           <IconChevron dir="left" color={t.colors.inkSoft} />
@@ -65,7 +68,7 @@ export function TripSetupScreen() {
           Trip Mode
         </Text>
       </View>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: t.spacing.pageH, paddingBottom: 32 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: t.spacing.pageH, paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
         <Eyebrow style={{ marginBottom: 6 }}>DESTINATION</Eyebrow>
         <Card style={{ marginBottom: 14 }}>
           <TextInput
@@ -234,7 +237,7 @@ export function TripSetupScreen() {
         initialHour={etaHour ?? new Date().getHours()}
         initialMinute={etaMinute ?? Math.ceil(new Date().getMinutes() / 5) * 5 % 60}
       />
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

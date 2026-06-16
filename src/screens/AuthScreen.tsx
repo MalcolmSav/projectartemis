@@ -73,7 +73,7 @@ export function AuthScreen() {
     setMessage(null);
     setBusy(true);
     const trimmedEmail = email.trim();
-    const trimmedUsername = username.trim();
+    const trimmedUsername = username.trim().toLowerCase();
     const trimmedName = name.trim();
     const trimmedPassword = password.trim();
 
@@ -96,7 +96,7 @@ export function AuthScreen() {
       const { data: existing, error: lookupError } = await supabase
         .from('profiles')
         .select('id')
-        .eq('username', trimmedUsername)
+        .ilike('username', trimmedUsername)
         .maybeSingle();
       if (lookupError) {
         setErr('Unable to verify username availability.');
@@ -122,13 +122,13 @@ export function AuthScreen() {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={{ flex: 1, backgroundColor: t.colors.ivoryBg }}
     >
       <ScrollView contentContainerStyle={{ flexGrow: 1, padding: t.spacing.pageH, paddingTop: 80 }} keyboardShouldPersistTaps="handled">
         <View style={{ alignItems: 'center', marginBottom: 32 }}>
           <ArtemisMark size={56} moonColor={t.colors.forest700} />
-          <Text style={{ fontFamily: t.type.display, fontSize: 32, marginTop: 12 }}>Artemis</Text>
+          <Text style={{ fontFamily: t.type.display, fontSize: 32, lineHeight: 42, marginTop: 12 }}>Artemis</Text>
           <Text style={{ fontFamily: t.type.displayItalic, fontSize: 14, color: t.colors.inkMute, marginTop: 2 }}>
             she who watches
           </Text>

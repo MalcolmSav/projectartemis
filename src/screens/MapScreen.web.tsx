@@ -416,7 +416,7 @@ export function MapScreen() {
           await addReport({
             kind: r.kind,
             label: r.label,
-            area: r.area,
+            notes: r.notes,
             lat: coords.latitude,
             lng: coords.longitude,
             anon: r.anon,
@@ -435,7 +435,7 @@ function ReportSheet({
 }: {
   open: boolean;
   onClose: () => void;
-  onSubmit: (r: { kind: ReportKind; label: string; area: string; anon: boolean }) => void;
+  onSubmit: (r: { kind: ReportKind; label: string; notes: string; anon: boolean }) => void;
 }) {
   const t = useTheme();
   const [kind, setKind] = useState<ReportKind>('yellow');
@@ -547,7 +547,7 @@ function ReportSheet({
           onSubmit({
             kind,
             label: type,
-            area: notes,
+            notes,
             anon,
           })
         }

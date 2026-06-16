@@ -437,6 +437,7 @@ function EventSheet({
   const submit = async () => {
     if (!title.trim()) return setErr('Title is required');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return setErr('Date must be YYYY-MM-DD');
+    if (time.trim() && !/^\d{2}:\d{2}$/.test(time.trim())) return setErr('Time must be HH:MM (e.g. 21:00)');
     setBusy(true);
     const res = await onSave({
       date,
@@ -468,9 +469,9 @@ function EventSheet({
       <Eyebrow style={{ marginBottom: 6 }}>TITLE</Eyebrow>
       <TextInput value={title} onChangeText={setTitle} style={input} placeholderTextColor={t.colors.inkMute} placeholder="Girls night" />
       <Eyebrow style={{ marginBottom: 6 }}>DATE</Eyebrow>
-      <TextInput value={date} onChangeText={setDate} style={input} placeholderTextColor={t.colors.inkMute} placeholder="2026-05-14" />
+      <TextInput value={date} onChangeText={setDate} style={input} placeholderTextColor={t.colors.inkMute} placeholder="YYYY-MM-DD" keyboardType="numeric" />
       <Eyebrow style={{ marginBottom: 6 }}>TIME</Eyebrow>
-      <TextInput value={time} onChangeText={setTime} style={input} placeholderTextColor={t.colors.inkMute} placeholder="21:00" />
+      <TextInput value={time} onChangeText={setTime} style={input} placeholderTextColor={t.colors.inkMute} placeholder="HH:MM (optional)" keyboardType="numeric" />
       <Eyebrow style={{ marginBottom: 6 }}>LOCATION</Eyebrow>
       <TextInput value={location} onChangeText={setLocation} style={input} placeholderTextColor={t.colors.inkMute} placeholder="Stureplan" />
       <Eyebrow style={{ marginBottom: 6 }}>NOTES</Eyebrow>

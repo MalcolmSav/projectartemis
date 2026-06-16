@@ -135,7 +135,10 @@ export const type = {
   displayItalic: 'Fraunces_400Regular_Italic',
   body: 'DMSans_400Regular',
   bodyMedium: 'DMSans_500Medium',
-  bodySemibold: 'DMSans_600SemiBold',
+  // DM Sans (this @expo-google-fonts build) ships 400/500/700 only — no 600.
+  // Map "semibold" to 700 so emphasis text actually renders in DM Sans instead
+  // of silently falling back to the system font.
+  bodySemibold: 'DMSans_700Bold',
   bodyBold: 'DMSans_700Bold',
 
   size: {

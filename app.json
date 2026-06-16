@@ -9,10 +9,19 @@
     "scheme": "artemis",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.artemis.app"
+      "bundleIdentifier": "com.artemis.app",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Artemis shares your live location with your safety circle while you choose to, and shows nearby community safety reports.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
-      "package": "com.artemis.app"
+      "package": "com.artemis.app",
+      "softwareKeyboardLayoutMode": "resize",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ]
     },
     "plugins": [
       "expo-font",

@@ -4,12 +4,15 @@ import { supabase, Profile } from '../lib/supabase';
 
 interface AuthValue {
   loading: boolean;
+  profileLoading: boolean;
+  isRecovery: boolean;
   session: Session | null;
   user: User | null;
   profile: Profile | null;
   signIn: (email: string, password: string) => Promise<{ error?: string }>;
   signUp: (email: string, password: string, name: string, username: string) => Promise<{ error?: string }>;
   signInWithGoogleToken: (idToken: string) => Promise<{ error?: string }>;
+  updatePassword: (newPassword: string) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -20,14 +23,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [isRecovery, setIsRecovery] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
       setLoading(false);
     });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s);
+      if (event === 'PASSWORD_RECOVERY') setIsRecovery(true);
+      else setIsRecovery(false);
     });
     return () => {
       sub.subscription.unsubscribe();
@@ -39,12 +46,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!userId) {
       setProfile(null);
+      setProfileLoading(false);
       return;
     }
+    setProfileLoading(true);
     let cancelled = false;
     (async () => {
       const { data } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
-      if (!cancelled) setProfile(data ?? null);
+      if (!cancelled) {
+        setProfile(data ?? null);
+        setProfileLoading(false);
+      }
     })();
     return () => {
       cancelled = true;
@@ -64,12 +76,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signUp: AuthValue['signUp'] = async (email, password, name, username) => {
     const trimmedName = name.trim();
-    const trimmedUsername = username.trim();
+    const trimmedUsername = username.trim().toLowerCase();
     const { error } = await supabase.auth.signUp({
       email: email.trim(),
       password,
       options: { data: { name: trimmedName, username: trimmedUsername } },
     });
+    return error ? { error: error.message } : {};
+  };
+
+  const updatePassword: AuthValue['updatePassword'] = async (newPassword) => {
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (!error) setIsRecovery(false);
     return error ? { error: error.message } : {};
   };
 
@@ -89,16 +107,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<AuthValue>(
     () => ({
       loading,
+      profileLoading,
+      isRecovery,
       session,
       user: session?.user ?? null,
       profile,
       signIn,
       signUp,
       signInWithGoogleToken,
+      updatePassword,
       signOut,
       refreshProfile,
     }),
-    [loading, session, profile],
+    [loading, profileLoading, isRecovery, session, profile],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

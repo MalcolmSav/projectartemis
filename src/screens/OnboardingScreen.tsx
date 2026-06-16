@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabase';
 import { pickAndUploadAvatar } from '../lib/avatar';
 import { OnboardingCircleStep } from './OnboardingCircleStep';
 
+import { OnboardingMapStep } from './OnboardingMapStep';
 import { OnboardingFakeCallStep } from './OnboardingFakeCallStep';
 import { OnboardingCalendarStep } from './OnboardingCalendarStep';
 import { OnboardingWellnessStep } from './OnboardingWellnessStep';
@@ -18,16 +19,21 @@ type EmergencyContact = {
   contactInfo: string;
 };
 
-type OnboardingStep = 'intro' | 'circle' | 'emergency' | 'wellness' | 'calendar' | 'fakecall' | 'tripmode' | 'complete';
+type OnboardingStep = 'username' | 'intro' | 'circle' | 'emergency' | 'wellness' | 'map' | 'calendar' | 'fakecall' | 'tripmode' | 'complete';
 
 export function OnboardingScreen() {
   const t = useTheme();
-  const { profile, refreshProfile, signOut } = useAuth();
-  const [step, setStep] = useState<OnboardingStep>('intro');
+  const { profile, user, refreshProfile, signOut } = useAuth();
+  const needsUsername = !profile?.username;
+  const [step, setStep] = useState<OnboardingStep>(needsUsername ? 'username' : 'intro');
   const [emergencyContacts, setEmergencyContacts] = useState<EmergencyContact[]>([]);
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [usernameInput, setUsernameInput] = useState('');
+  const [nameInput, setNameInput] = useState(
+    user?.user_metadata?.full_name ?? user?.user_metadata?.name ?? ''
+  );
 
   const onPickAvatar = async () => {
     if (!profile) return;
@@ -51,6 +57,37 @@ export function OnboardingScreen() {
     const updated = [...emergencyContacts];
     updated[index] = { ...updated[index], [field]: value };
     setEmergencyContacts(updated);
+  };
+
+  const saveUsername = async () => {
+    const trimmedUsername = usernameInput.trim().toLowerCase();
+    const trimmedName = nameInput.trim();
+    if (!trimmedUsername) { setErr('Choose a username.'); return; }
+    if (!/^[a-zA-Z0-9_]+$/.test(trimmedUsername)) { setErr('Only letters, numbers, and underscores.'); return; }
+    if (!trimmedName) { setErr('Enter your name.'); return; }
+    setBusy(true);
+    setErr(null);
+
+    const { data: existing } = await supabase.from('profiles').select('id').ilike('username', trimmedUsername).maybeSingle();
+    if (existing) { setErr('Username already taken.'); setBusy(false); return; }
+
+    if (!profile) {
+      const { error } = await supabase.from('profiles').insert({
+        id: user!.id,
+        email: user!.email ?? '',
+        name: trimmedName,
+        username: trimmedUsername,
+        onboarded: false,
+      });
+      if (error) { setErr(error.message); setBusy(false); return; }
+    } else {
+      const { error } = await supabase.from('profiles').update({ name: trimmedName, username: trimmedUsername }).eq('id', profile.id);
+      if (error) { setErr(error.message); setBusy(false); return; }
+    }
+
+    await refreshProfile();
+    setBusy(false);
+    setStep('intro');
   };
 
   const save = async () => {
@@ -106,46 +143,99 @@ export function OnboardingScreen() {
 
   return (
     <>
-      {step === 'intro' ? (
+      {step === 'username' ? (
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1, backgroundColor: t.colors.ivoryBg }}
+        >
+          <ScrollView contentContainerStyle={{ flexGrow: 1, padding: t.spacing.pageH, paddingTop: 90 }} keyboardShouldPersistTaps="handled">
+            <View style={{ flex: 1, justifyContent: 'center' }}>
+              <Eyebrow style={{ marginBottom: 6 }}>ONE LAST THING</Eyebrow>
+              <Text variant="displayH1" style={{ marginBottom: 14 }}>
+                Choose your{' '}
+                <Text variant="displayH1" italic accent>username.</Text>
+              </Text>
+              <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 22 }}>
+                This is how others find and add you to their circle.
+              </Text>
+
+              <Eyebrow style={{ marginBottom: 6 }}>FULL NAME</Eyebrow>
+              <TextInput
+                value={nameInput}
+                onChangeText={setNameInput}
+                placeholder="First and last name"
+                placeholderTextColor={t.colors.inkMute}
+                autoCapitalize="words"
+                style={inputStyle(t)}
+              />
+
+              <Eyebrow style={{ marginBottom: 6 }}>USERNAME</Eyebrow>
+              <TextInput
+                value={usernameInput}
+                onChangeText={setUsernameInput}
+                placeholder="e.g. malcolm_s"
+                placeholderTextColor={t.colors.inkMute}
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={inputStyle(t)}
+              />
+
+              {err && (
+                <Text variant="small" color={t.colors.crimson} style={{ marginBottom: 10 }}>{err}</Text>
+              )}
+
+              <PillButton
+                size="lg"
+                block
+                onPress={saveUsername}
+                disabled={busy || !usernameInput.trim() || !nameInput.trim()}
+              >
+                {busy ? 'Saving…' : 'Continue'}
+              </PillButton>
+
+              <PillButton variant="ghost" block style={{ marginTop: 8 }} onPress={signOut}>
+                Sign out
+              </PillButton>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      ) : step === 'intro' ? (
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={{ flex: 1, backgroundColor: t.colors.ivoryBg }}
         >
           <ScrollView contentContainerStyle={{ flexGrow: 1, padding: t.spacing.pageH, paddingTop: 90 }} keyboardShouldPersistTaps="handled">
             <View style={{ flex: 1, justifyContent: 'center' }}>
               <Eyebrow style={{ marginBottom: 6 }}>WELCOME TO ARTEMIS</Eyebrow>
               <Text variant="displayH1" style={{ marginBottom: 14 }}>
-                A softer way to feel{' '}
+                A quiet way to say{' '}
                 <Text variant="displayH1" italic accent>
-                  safer.
+                  I got here safe.
                 </Text>
               </Text>
               <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 22 }}>
-                Artemis helps you stay connected with trusted people when you are out, traveling, or need a quiet exit.
-                Your circle can use Artemis features with you: location sharing, wellness checks, calendar visibility,
-                trip mode, and safety follow-ups. Emergency contacts are separate people others can call if you are
-                unavailable.
+                Artemis is for the people who care about you — so they don't have to wonder. Share where you're at, let them check in on you, and have a quiet exit ready when you need one.
               </Text>
 
               <Card style={{ marginBottom: 24 }}>
                 <View style={{ gap: 12 }}>
                   <Text variant="body" weight="semibold">
-                    During setup you will:
+                    Quick setup:
                   </Text>
                   <Text variant="small" color={t.colors.inkSoft}>
-                    Build your circle of trusted people.
+                    👥  Build your circle of trusted people.
                   </Text>
                   <Text variant="small" color={t.colors.inkSoft}>
-                    Add emergency contacts, like a partner or parent, for others to reach if you are unavailable.
+                    📍  Learn how the map and location sharing works.
                   </Text>
                   <Text variant="small" color={t.colors.inkSoft}>
-                    Learn how wellness checks work.
+                    📅  Add moments when you'll be hard to reach.
                   </Text>
                   <Text variant="small" color={t.colors.inkSoft}>
-                    Add moments where you may be hard to reach.
+                    📞  Set up a fake call for quick exits.
                   </Text>
                   <Text variant="small" color={t.colors.inkSoft}>
-                    Choose quick safety tools like fake call and trip mode.
+                    🌙  Trip mode for when you're out late or traveling.
                   </Text>
                 </View>
               </Card>
@@ -162,7 +252,7 @@ export function OnboardingScreen() {
         </KeyboardAvoidingView>
       ) : step === 'emergency' ? (
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={{ flex: 1, backgroundColor: t.colors.ivoryBg }}
         >
           <ScrollView contentContainerStyle={{ padding: t.spacing.pageH, paddingTop: 70 }} keyboardShouldPersistTaps="handled">
@@ -245,6 +335,10 @@ export function OnboardingScreen() {
         />
       ) : step === 'wellness' ? (
         <OnboardingWellnessStep
+          onComplete={() => setStep('map')}
+        />
+      ) : step === 'map' ? (
+        <OnboardingMapStep
           onComplete={() => setStep('calendar')}
         />
       ) : step === 'calendar' ? (

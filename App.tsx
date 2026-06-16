@@ -17,7 +17,6 @@ import {
   useFonts as useDMSans,
   DMSans_400Regular,
   DMSans_500Medium,
-  DMSans_600SemiBold,
   DMSans_700Bold,
 } from '@expo-google-fonts/dm-sans';
 import { ThemeProvider, useTheme } from './src/theme/ThemeProvider';
@@ -27,13 +26,14 @@ import { RootNavigator } from './src/navigation/RootNavigator';
 
 import { AuthScreen } from './src/screens/AuthScreen';
 import { OnboardingScreen } from './src/screens/OnboardingScreen';
+import { ResetPasswordScreen } from './src/screens/ResetPasswordScreen';
 import { usePresenceBroadcast } from './src/hooks/usePresenceBroadcast';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 function GatedApp() {
   const t = useTheme();
-  const { loading, session, profile } = useAuth();
+  const { loading, profileLoading, isRecovery, session, profile } = useAuth();
   usePresenceBroadcast();
 
   const navTheme = {
@@ -48,7 +48,7 @@ function GatedApp() {
     },
   };
 
-  if (loading) {
+  if (loading || profileLoading) {
     return (
       <View style={{ flex: 1, backgroundColor: t.colors.ivoryBg, alignItems: 'center', justifyContent: 'center' }}>
         <ActivityIndicator color={t.colors.forest700} />
@@ -60,7 +60,11 @@ function GatedApp() {
     return <AuthScreen />;
   }
 
-  if (profile && !profile.onboarded) {
+  if (isRecovery) {
+    return <ResetPasswordScreen />;
+  }
+
+  if (!profile?.onboarded) {
     return <OnboardingScreen />;
   }
 
@@ -82,7 +86,6 @@ export default function App() {
   const [dm] = useDMSans({
     DMSans_400Regular,
     DMSans_500Medium,
-    DMSans_600SemiBold,
     DMSans_700Bold,
   });
 

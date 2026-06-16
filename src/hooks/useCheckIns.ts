@@ -24,14 +24,20 @@ export interface FriendAlarm {
   checkIn: CheckIn;
 }
 
+export interface FriendNeedHelp {
+  profile: Profile | null;
+  checkIn: CheckIn;
+}
+
 export function useCheckIns() {
   const { user } = useAuth();
   const [latestByUser, setLatestByUser] = useState<Record<string, CheckIn>>({});
   const [pendingForMe, setPendingForMe] = useState<PendingRequest | null>(null);
   const [friendAlarm, setFriendAlarm] = useState<FriendAlarm | null>(null);
+  const [friendNeedHelp, setFriendNeedHelp] = useState<FriendNeedHelp | null>(null);
   const [loading, setLoading] = useState(true);
-  // Track which alarm IDs we've already surfaced so we don't re-alert on every refresh
   const shownAlarmIds = useRef<Set<string>>(new Set());
+  const shownNeedHelpIds = useRef<Set<string>>(new Set());
 
   const refresh = useCallback(async () => {
     if (!user) return;
@@ -107,6 +113,25 @@ export function useCheckIns() {
           }
           break;
         }
+
+        // Also detect "need help" wellness responses
+        const { data: needHelps } = await supabase
+          .from('check_ins')
+          .select('*, profile:profiles!check_ins_user_id_fkey(*)')
+          .eq('user_id', req.target_id)
+          .eq('kind', 'wellness_response')
+          .eq('note', 'need_help')
+          .gte('created_at', req.created_at)
+          .order('created_at', { ascending: false })
+          .limit(1);
+        if (needHelps && needHelps.length > 0) {
+          const nh = needHelps[0] as any;
+          if (!shownNeedHelpIds.current.has(nh.id)) {
+            shownNeedHelpIds.current.add(nh.id);
+            setFriendNeedHelp({ profile: nh.profile ?? null, checkIn: nh as CheckIn });
+          }
+          break;
+        }
       }
     }
 
@@ -179,12 +204,15 @@ export function useCheckIns() {
   );
 
   const clearFriendAlarm = useCallback(() => setFriendAlarm(null), []);
+  const clearFriendNeedHelp = useCallback(() => setFriendNeedHelp(null), []);
 
   return {
     latestByUser,
     pendingForMe,
     friendAlarm,
     clearFriendAlarm,
+    friendNeedHelp,
+    clearFriendNeedHelp,
     loading,
     refresh,
     recordOk,

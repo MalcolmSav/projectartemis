@@ -31,6 +31,7 @@ interface Props {
   iconLeft?: React.ReactNode;
   iconRight?: React.ReactNode;
   children?: React.ReactNode;
+  accessibilityLabel?: string;
 }
 
 export function PillButton({
@@ -43,6 +44,7 @@ export function PillButton({
   iconLeft,
   iconRight,
   children,
+  accessibilityLabel,
 }: Props) {
   const t = useTheme();
   const scale = useSharedValue(1);
@@ -152,6 +154,8 @@ export function PillButton({
         onPressIn={onPressIn}
         onPressOut={onPressOut}
         disabled={disabled}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
         style={{ borderRadius: 999, opacity: disabled ? 0.6 : 1 }}
       >
         {body}

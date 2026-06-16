@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { ScrollView, View, Pressable, TextInput } from 'react-native';
+import { ScrollView, View, Pressable, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Text, Eyebrow, Card, PillButton } from '../components';
@@ -21,6 +22,7 @@ const TIMINGS = [
 export function FakeCallSetupScreen() {
   const t = useTheme();
   const nav = useNavigation<Nav>();
+  const insets = useSafeAreaInsets();
   const { fakeCallScheduledAt, fakeCallCallerName, setFakeCallCallerName, scheduleFakeCall, cancelFakeCallSchedule } = useAppState();
   const [chosen, setChosen] = useState(30);
   const [now, setNow] = useState(Date.now());
@@ -40,8 +42,11 @@ export function FakeCallSetupScreen() {
   const remaining = fakeCallScheduledAt ? Math.max(0, Math.ceil((fakeCallScheduledAt - now) / 1000)) : null;
 
   return (
-    <View style={{ flex: 1, backgroundColor: t.colors.ivoryBg }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 60, paddingHorizontal: 22, paddingBottom: 12 }}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ flex: 1, backgroundColor: t.colors.ivoryBg }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: insets.top + 14, paddingHorizontal: 22, paddingBottom: 12 }}>
         <Pressable onPress={() => nav.goBack()} style={{ padding: 6, marginRight: 6 }}>
           <IconChevron dir="left" color={t.colors.inkSoft} />
         </Pressable>
@@ -49,11 +54,11 @@ export function FakeCallSetupScreen() {
           Fake call
         </Text>
       </View>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: t.spacing.pageH, paddingBottom: 32 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: t.spacing.pageH, paddingBottom: insets.bottom + 40 }} keyboardShouldPersistTaps="handled">
         <Card style={{ marginBottom: 18, alignItems: 'center', paddingVertical: 28 }}>
-          <Text style={{ fontSize: 56, marginBottom: 12 }}>📞</Text>
+          <Text style={{ fontSize: 56, lineHeight: 68, marginBottom: 8 }}>📞</Text>
           <Eyebrow>CALLER · {fakeCallCallerName.toUpperCase()}</Eyebrow>
-          <Text style={{ fontFamily: t.type.display, fontSize: 44, marginTop: 8 }}>
+          <Text style={{ fontFamily: t.type.display, fontSize: 44, lineHeight: 56, marginTop: 8 }}>
             {remaining != null ? `${remaining}s` : `${chosen}s`}
           </Text>
           <Text variant="small" color={t.colors.inkSoft} style={{ marginTop: 6, textAlign: 'center' }}>
@@ -120,6 +125,6 @@ export function FakeCallSetupScreen() {
           )}
         </View>
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }

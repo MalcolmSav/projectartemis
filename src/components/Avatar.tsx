@@ -52,9 +52,12 @@ export function Avatar({ name, size = 48, status, photoUri, ring, style }: Props
             style={{
               fontFamily: t.type.display,
               fontSize: size * 0.42,
-              lineHeight: size * 0.42 * 1.1,
+              lineHeight: size,
+              width: size,
+              height: size,
               color: palette.forest900,
               textAlign: 'center',
+              textAlignVertical: 'center' as any,
               includeFontPadding: false as any,
             }}
           >

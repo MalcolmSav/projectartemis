@@ -5,7 +5,9 @@ import { Text, Eyebrow, Avatar, Card, Toggle, Divider } from '../components';
 import { IconChevron, IconLocate } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
 import { useAppState } from '../state/AppState';
-import { CIRCLE, ShareMode } from '../data/demo';
+import { useCircle } from '../hooks/useCircle';
+import { usePresence } from '../hooks/usePresence';
+import { ShareMode } from '../data/demo';
 
 const MODES: { id: ShareMode; label: string; sub: string }[] = [
   { id: 'always', label: 'Always on', sub: 'Until you turn it off' },
@@ -17,6 +19,8 @@ export function LocationShareScreen() {
   const t = useTheme();
   const nav = useNavigation();
   const { sharing, shareStartedAt, setSharing, shareMode, setShareMode, visibleTo, setVisibleTo } = useAppState();
+  const { members } = useCircle();
+  const { byUser: presenceByUser } = usePresence();
 
   const onMasterToggle = (next: boolean) => {
     if (next === sharing) return;
@@ -116,25 +120,47 @@ export function LocationShareScreen() {
         </View>
 
         <Eyebrow style={{ marginBottom: 8 }}>CURRENTLY VISIBLE TO</Eyebrow>
-        <Card padding={4}>
-          {CIRCLE.map((p, i) => (
-            <View key={p.id}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', padding: 12, gap: 12 }}>
-                <Avatar name={p.name} size={40} status={p.status} />
-                <View style={{ flex: 1 }}>
-                  <Text variant="body" weight="semibold">
-                    {p.name}
-                  </Text>
-                  <Text variant="meta" color={t.colors.inkMute}>
-                    {visibleTo[p.id] && sharing ? 'Live' : 'Hidden'}
-                  </Text>
+        {members.length === 0 ? (
+          <Card>
+            <Text variant="small" color={t.colors.inkSoft} style={{ textAlign: 'center', paddingVertical: 8 }}>
+              No one in your circle yet. Add people on the Circle tab to share your location with them.
+            </Text>
+          </Card>
+        ) : (
+          <Card padding={4}>
+            {members.map((m, i) => {
+              // Default to visible unless the user explicitly hid this person.
+              const isVisible = visibleTo[m.profile.id] !== false;
+              const theirPresence = presenceByUser[m.profile.id];
+              const theyShareBack =
+                theirPresence && Date.now() - new Date(theirPresence.updated_at).getTime() < 5 * 60_000;
+              const name = m.profile.name ?? m.profile.email;
+              return (
+                <View key={m.edgeId}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', padding: 12, gap: 12 }}>
+                    <Avatar
+                      name={name}
+                      size={40}
+                      status={theyShareBack ? 'ok' : 'warn'}
+                      photoUri={m.profile.avatar_url ?? undefined}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text variant="body" weight="semibold">
+                        {name}
+                      </Text>
+                      <Text variant="meta" color={t.colors.inkMute}>
+                        {isVisible && sharing ? 'Can see you · Live' : 'Hidden from them'}
+                        {theyShareBack ? ' · sharing back' : ''}
+                      </Text>
+                    </View>
+                    <Toggle on={isVisible} onChange={(b) => setVisibleTo(m.profile.id, b)} disabled={!sharing} />
+                  </View>
+                  {i < members.length - 1 && <Divider />}
                 </View>
-                <Toggle on={!!visibleTo[p.id]} onChange={(b) => setVisibleTo(p.id, b)} disabled={!sharing} />
-              </View>
-              {i < CIRCLE.length - 1 && <Divider />}
-            </View>
-          ))}
-        </Card>
+              );
+            })}
+          </Card>
+        )}
       </ScrollView>
     </View>
   );
