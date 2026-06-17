@@ -1,5 +1,5 @@
 import 'react-native-gesture-handler';
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
@@ -23,30 +23,44 @@ import { ThemeProvider, useTheme } from './src/theme/ThemeProvider';
 import { AppStateProvider } from './src/state/AppState';
 import { AuthProvider, useAuth } from './src/state/Auth';
 import { RootNavigator } from './src/navigation/RootNavigator';
+import { OfflineBanner } from './src/components';
 
 import { AuthScreen } from './src/screens/AuthScreen';
 import { OnboardingScreen } from './src/screens/OnboardingScreen';
 import { ResetPasswordScreen } from './src/screens/ResetPasswordScreen';
 import { usePresenceBroadcast } from './src/hooks/usePresenceBroadcast';
+import { useEvents } from './src/hooks/useEvents';
+import { useEventCheckinReminders } from './src/hooks/useEventCheckinReminders';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
+
+// Schedules calendar-linked check-in notifications. Rendered as a sibling so its
+// realtime-driven re-renders don't churn the navigation theme (which flickers).
+function CalendarReminders() {
+  const { events } = useEvents();
+  useEventCheckinReminders(events);
+  return null;
+}
 
 function GatedApp() {
   const t = useTheme();
   const { loading, profileLoading, isRecovery, session, profile } = useAuth();
   usePresenceBroadcast();
 
-  const navTheme = {
-    ...(t.mode === 'night' ? DarkTheme : DefaultTheme),
-    colors: {
-      ...(t.mode === 'night' ? DarkTheme.colors : DefaultTheme.colors),
-      background: t.colors.ivoryBg,
-      card: t.colors.parchment,
-      text: t.colors.ink,
-      border: t.colors.hairline,
-      primary: t.colors.forest700,
-    },
-  };
+  const navTheme = useMemo(
+    () => ({
+      ...(t.mode === 'night' ? DarkTheme : DefaultTheme),
+      colors: {
+        ...(t.mode === 'night' ? DarkTheme.colors : DefaultTheme.colors),
+        background: t.colors.ivoryBg,
+        card: t.colors.parchment,
+        text: t.colors.ink,
+        border: t.colors.hairline,
+        primary: t.colors.forest700,
+      },
+    }),
+    [t.mode, t.colors],
+  );
 
   if (loading || profileLoading) {
     return (
@@ -105,6 +119,8 @@ export default function App() {
             <AppStateProvider>
               <StatusBar style="dark" />
               <GatedApp />
+              <CalendarReminders />
+              <OfflineBanner />
             </AppStateProvider>
           </AuthProvider>
         </ThemeProvider>

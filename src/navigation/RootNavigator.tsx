@@ -8,6 +8,7 @@ import { ConversationsScreen } from '../screens/ConversationsScreen';
 import { LocationShareScreen } from '../screens/LocationShareScreen';
 import { TripSetupScreen } from '../screens/TripSetupScreen';
 import { TripActiveScreen } from '../screens/TripActiveScreen';
+import { TripFollowScreen } from '../screens/TripFollowScreen';
 import { FakeCallSetupScreen } from '../screens/FakeCallSetupScreen';
 import { FakeCallIncomingScreen } from '../screens/FakeCallIncomingScreen';
 import { FakeCallOnCallScreen } from '../screens/FakeCallOnCallScreen';
@@ -27,6 +28,7 @@ export function RootNavigator() {
       <Stack.Screen name="LocationShare" component={LocationShareScreen} />
       <Stack.Screen name="Trip" component={TripSetupScreen} />
       <Stack.Screen name="TripActive" component={TripActiveScreen} />
+      <Stack.Screen name="TripFollow" component={TripFollowScreen} />
       <Stack.Screen name="FakeCall" component={FakeCallSetupScreen} />
       <Stack.Screen
         name="FakeCallIncoming"

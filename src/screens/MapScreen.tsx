@@ -26,7 +26,22 @@ const REPORT_HEX: Record<ReportKind, string> = {
 // Stockholm fallback if location denied
 const FALLBACK = { latitude: 59.3293, longitude: 18.0686 };
 
+// How close a report has to be (metres) to count as "near you".
+const RISK_RADIUS_M = 500;
+
 type LatLng = { latitude: number; longitude: number };
+
+/** Great-circle distance between two coords, in metres. */
+function distanceM(a: LatLng, b: LatLng): number {
+  const R = 6371000;
+  const dLat = ((b.latitude - a.latitude) * Math.PI) / 180;
+  const dLng = ((b.longitude - a.longitude) * Math.PI) / 180;
+  const lat1 = (a.latitude * Math.PI) / 180;
+  const lat2 = (b.latitude * Math.PI) / 180;
+  const h =
+    Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
 
 // Pastel forest map style — mute saturation, ivory base, forest-green roads.
 const MAP_STYLE_LIGHT = [
@@ -119,6 +134,32 @@ export function MapScreen() {
       }>;
   }, [members, presenceByUser]);
 
+  // Reports near the user, used for the "risk near you" awareness card and the
+  // danger-zone glow overlay. Pure client-side from existing report data.
+  const nearby = useMemo(() => {
+    if (!coords) return { red: 0, yellow: 0, green: 0, nearest: null as DBReport | null };
+    let red = 0,
+      yellow = 0,
+      green = 0;
+    let nearest: DBReport | null = null;
+    let nearestDist = Infinity;
+    for (const r of reports) {
+      const d = distanceM(coords, { latitude: r.lat, longitude: r.lng });
+      if (d > RISK_RADIUS_M) continue;
+      if (r.kind === 'red') red++;
+      else if (r.kind === 'yellow') yellow++;
+      else green++;
+      if ((r.kind === 'red' || r.kind === 'yellow') && d < nearestDist) {
+        nearestDist = d;
+        nearest = r;
+      }
+    }
+    return { red, yellow, green, nearest };
+  }, [coords, reports]);
+
+  const riskLevel: 'alarm' | 'warn' | 'clear' =
+    nearby.red > 0 ? 'alarm' : nearby.yellow > 0 ? 'warn' : 'clear';
+
   const recenter = () => {
     if (!coords || !mapRef.current) return;
     mapRef.current.animateToRegion(
@@ -186,6 +227,15 @@ export function MapScreen() {
           {showLayer &&
             visibleReports.map((r) => (
               <React.Fragment key={r.id}>
+                {/* Danger-zone glow — larger + softer for unsafe reports */}
+                {(r.kind === 'red' || r.kind === 'yellow') && (
+                  <MapCircle
+                    center={{ latitude: r.lat, longitude: r.lng }}
+                    radius={r.kind === 'red' ? 160 : 120}
+                    strokeColor="transparent"
+                    fillColor={`${REPORT_HEX[r.kind as ReportKind]}1A`}
+                  />
+                )}
                 <MapCircle
                   center={{ latitude: r.lat, longitude: r.lng }}
                   radius={80}
@@ -406,6 +456,8 @@ export function MapScreen() {
               </View>
               <Pressable
                 onPress={recenter}
+                accessibilityRole="button"
+                accessibilityLabel="Center map on my location"
                 style={[
                   {
                     width: 40,
@@ -422,7 +474,17 @@ export function MapScreen() {
               </Pressable>
             </View>
 
-            <View
+            <Pressable
+              onPress={() => {
+                if (nearby.nearest && mapRef.current) {
+                  mapRef.current.animateToRegion(
+                    { latitude: nearby.nearest.lat, longitude: nearby.nearest.lng, latitudeDelta: 0.008, longitudeDelta: 0.008 },
+                    500,
+                  );
+                  setSelected(nearby.nearest);
+                }
+              }}
+              disabled={!nearby.nearest}
               style={[
                 {
                   flexDirection: 'row',
@@ -431,20 +493,36 @@ export function MapScreen() {
                   backgroundColor: t.colors.parchment,
                   padding: 12,
                   borderRadius: t.radii.md,
+                  borderLeftWidth: 3,
+                  borderLeftColor:
+                    riskLevel === 'alarm' ? palette.crimson : riskLevel === 'warn' ? palette.statusWarn : palette.statusOk,
                 },
                 t.shadows.soft,
               ]}
             >
               <View style={{ flex: 1 }}>
                 <Text variant="small" weight="semibold">
-                  Community Safety Layer
+                  {riskLevel === 'alarm'
+                    ? 'Unsafe area nearby'
+                    : riskLevel === 'warn'
+                      ? 'Stay aware nearby'
+                      : 'Clear around you'}
                 </Text>
                 <Text variant="meta" color={t.colors.inkMute}>
-                  {visibleReports.length} reports {filter === 'all' ? 'nearby' : `(${filter})`}
+                  {coords
+                    ? nearby.red + nearby.yellow > 0
+                      ? `${[
+                          nearby.red ? `${nearby.red} unsafe` : null,
+                          nearby.yellow ? `${nearby.yellow} uneasy` : null,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')} within ${RISK_RADIUS_M} m · tap to view`
+                      : `No alerts within ${RISK_RADIUS_M} m · ${visibleReports.length} reports on map`
+                    : `${visibleReports.length} reports nearby`}
                 </Text>
               </View>
               <Toggle on={showLayer} onChange={setShowLayer} />
-            </View>
+            </Pressable>
 
             {showLayer && (
               <View style={{ flexDirection: 'row', gap: 6 }}>

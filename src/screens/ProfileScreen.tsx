@@ -6,6 +6,7 @@ import { useTheme } from '../theme/ThemeProvider';
 import { useAuth } from '../state/Auth';
 import { useEvents } from '../hooks/useEvents';
 import { useEmergencyContacts } from '../hooks/useEmergencyContacts';
+import { useHomePlace } from '../hooks/useHomePlace';
 import { supabase } from '../lib/supabase';
 import { pickAndUploadAvatar } from '../lib/avatar';
 import { palette } from '../theme/tokens';
@@ -15,7 +16,16 @@ export function ProfileScreen() {
   const { profile, signOut, refreshProfile } = useAuth();
   const { events } = useEvents();
   const { contacts } = useEmergencyContacts(profile?.id);
+  const { home, setFromCurrentLocation, clearHome } = useHomePlace();
+  const [homeBusy, setHomeBusy] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+
+  const onSetHome = async () => {
+    setHomeBusy(true);
+    const res = await setFromCurrentLocation();
+    setHomeBusy(false);
+    if (res.error) Alert.alert('Could not set home', res.error);
+  };
 
   const display = profile?.name?.trim() || profile?.email?.split('@')[0] || '—';
   const [uploading, setUploading] = useState(false);
@@ -88,6 +98,37 @@ export function ProfileScreen() {
               </View>
             </>
           ) : null}
+        </Card>
+
+        <Eyebrow style={{ marginBottom: 8 }}>HOME · AUTO CHECK-IN</Eyebrow>
+        <Card style={{ marginBottom: 18 }}>
+          <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 10 }}>
+            When a trip reaches your home, Artemis marks you arrived safe automatically — no tapping needed.
+          </Text>
+          {home ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <View style={{ flex: 1 }}>
+                <Text variant="body" weight="semibold">🏡 {home.label}</Text>
+                <Text variant="meta" color={t.colors.inkMute}>
+                  {home.lat.toFixed(4)}, {home.lng.toFixed(4)}
+                </Text>
+              </View>
+              <Pressable onPress={onSetHome} disabled={homeBusy} hitSlop={8}>
+                <Text variant="small" weight="semibold" color={t.colors.gold700}>
+                  {homeBusy ? 'Updating…' : 'Update'}
+                </Text>
+              </Pressable>
+              <Pressable onPress={clearHome} hitSlop={8}>
+                <Text variant="small" weight="semibold" color={t.colors.crimson}>
+                  Clear
+                </Text>
+              </Pressable>
+            </View>
+          ) : (
+            <PillButton variant="secondary" block disabled={homeBusy} onPress={onSetHome}>
+              {homeBusy ? 'Getting location…' : 'Set home to my current location'}
+            </PillButton>
+          )}
         </Card>
 
         {contacts.length > 0 && (

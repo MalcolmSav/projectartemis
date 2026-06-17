@@ -7,9 +7,11 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "scheme": "artemis",
+    "icon": "./assets/icon-1024.png",
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.artemis.app",
+      "icon": "./assets/icon-1024.png",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Artemis shares your live location with your safety circle while you choose to, and shows nearby community safety reports.",
         "ITSAppUsesNonExemptEncryption": false
@@ -18,6 +20,10 @@
     "android": {
       "package": "com.artemis.app",
       "softwareKeyboardLayoutMode": "resize",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon-1024.png",
+        "backgroundColor": "#3A1F4A"
+      },
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION"
@@ -37,6 +43,21 @@
         {
           "photosPermission": "Artemis lets you set a profile photo from your gallery.",
           "cameraPermission": "Artemis lets you take a profile photo with your camera."
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/icon-1024.png",
+          "imageWidth": 180,
+          "resizeMode": "contain",
+          "backgroundColor": "#3A1F4A"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#C9973A"
         }
       ],
       "expo-web-browser"

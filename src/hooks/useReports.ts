@@ -14,15 +14,21 @@ export interface DBReport {
   created_at: string;
 }
 
+// Reports expire after this long. The DB purges them on a schedule, but we also
+// filter on read so stale reports never appear even before the purge runs.
+const REPORT_TTL_MS = 24 * 60 * 60 * 1000;
+
 export function useReports() {
   const { user } = useAuth();
   const [reports, setReports] = useState<DBReport[]>([]);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
+    const cutoff = new Date(Date.now() - REPORT_TTL_MS).toISOString();
     const { data } = await supabase
       .from('reports')
       .select('*')
+      .gte('created_at', cutoff)
       .order('created_at', { ascending: false })
       .limit(200);
     setReports((data ?? []) as DBReport[]);

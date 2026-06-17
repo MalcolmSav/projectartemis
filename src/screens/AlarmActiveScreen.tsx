@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, ScrollView, Pressable } from 'react-native';
+import { View, ScrollView, Pressable, Alert, Linking } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -7,6 +7,7 @@ import Animated, {
   withTiming,
   Easing,
 } from 'react-native-reanimated';
+import * as Location from 'expo-location';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Text, Eyebrow, PillButton, Avatar } from '../components';
@@ -16,6 +17,8 @@ import { palette } from '../theme/tokens';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../state/Auth';
 import { useCircle } from '../hooks/useCircle';
+import { useEmergencyContacts } from '../hooks/useEmergencyContacts';
+import { sendSosSms } from '../lib/sos';
 import { RootStackParamList } from '../navigation/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -59,13 +62,78 @@ export function AlarmActiveScreen() {
   const nav = useNavigation<Nav>();
   const { user } = useAuth();
   const { members } = useCircle();
+  const { contacts } = useEmergencyContacts(user?.id);
   const [elapsed, setElapsed] = useState(0);
+  const [place, setPlace] = useState<string | null>(null);
+  const [placeTime, setPlaceTime] = useState<Date | null>(null);
+  const [smsBusy, setSmsBusy] = useState(false);
 
   useEffect(() => {
     const start = Date.now();
     const id = setInterval(() => setElapsed(Date.now() - start), 250);
     return () => clearInterval(id);
   }, []);
+
+  // While the alarm is active, broadcast live location to the circle (write to
+  // presence) and resolve a human-readable place for the card. Re-sends every
+  // 20s so "live location shared" is actually true, not just a claim.
+  useEffect(() => {
+    let cancelled = false;
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    const tick = async (withGeo: boolean) => {
+      try {
+        const { status } = await Location.getForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          const ask = await Location.requestForegroundPermissionsAsync();
+          if (ask.status !== 'granted') return;
+        }
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+        if (cancelled) return;
+        // Share with the circle via presence.
+        if (user) {
+          await supabase.from('presence').upsert(
+            { user_id: user.id, lat: loc.coords.latitude, lng: loc.coords.longitude, updated_at: new Date().toISOString() },
+            { onConflict: 'user_id' },
+          );
+        }
+        setPlaceTime(new Date());
+        if (withGeo) {
+          const geo = await Location.reverseGeocodeAsync({
+            latitude: loc.coords.latitude,
+            longitude: loc.coords.longitude,
+          });
+          if (cancelled) return;
+          const g = geo[0];
+          setPlace(
+            g
+              ? [g.name ?? g.street, g.city ?? g.region].filter(Boolean).join(', ')
+              : `${loc.coords.latitude.toFixed(4)}, ${loc.coords.longitude.toFixed(4)}`,
+          );
+        }
+      } catch {
+        // best-effort
+      }
+    };
+
+    tick(true);
+    interval = setInterval(() => tick(false), 20_000);
+    return () => {
+      cancelled = true;
+      if (interval) clearInterval(interval);
+    };
+  }, [user]);
+
+  const onTextContacts = async () => {
+    if (contacts.length === 0) {
+      Alert.alert('No emergency contacts', 'Add emergency contacts in your profile so they can be texted in an emergency.');
+      return;
+    }
+    setSmsBusy(true);
+    const res = await sendSosSms(contacts.map((c) => c.contact_info));
+    setSmsBusy(false);
+    if (res.error) Alert.alert('Could not open Messages', res.error);
+  };
 
   // Persist the alarm event so the circle sees it
   useEffect(() => {
@@ -119,7 +187,7 @@ export function AlarmActiveScreen() {
           </Text>
         </Text>
 
-        {/* Recording audio indicator */}
+        {/* Alarm-active indicator */}
         <View
           style={{
             backgroundColor: 'rgba(192,57,43,0.18)',
@@ -139,10 +207,10 @@ export function AlarmActiveScreen() {
           />
           <View style={{ flex: 1 }}>
             <Text variant="small" weight="semibold" color="#F2EFE3">
-              Recording audio · Saves to circle
+              Alarm active · Circle notified
             </Text>
             <Text variant="meta" color={palette.crimsonSoft}>
-              Evidence on file
+              Live location shared
             </Text>
           </View>
           <Waveform />
@@ -160,10 +228,10 @@ export function AlarmActiveScreen() {
         >
           <Eyebrow color={palette.crimsonSoft}>LAST KNOWN</Eyebrow>
           <Text variant="body" weight="semibold" color="#F2EFE3" style={{ marginTop: 4 }}>
-            Slussen passage, Stockholm
+            {place ?? 'Locating…'}
           </Text>
           <Text variant="meta" color={palette.crimsonSoft}>
-            2 min ago
+            {placeTime ? placeTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'updating'}
           </Text>
         </View>
 
@@ -200,6 +268,12 @@ export function AlarmActiveScreen() {
                   </Text>
                 </View>
                 <Pressable
+                  disabled={!m.profile.phone}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Call ${m.profile.name ?? 'circle member'}`}
+                  onPress={() => {
+                    if (m.profile.phone) Linking.openURL(`tel:${m.profile.phone.replace(/\s+/g, '')}`);
+                  }}
                   style={{
                     width: 40,
                     height: 40,
@@ -207,6 +281,7 @@ export function AlarmActiveScreen() {
                     backgroundColor: palette.forest700,
                     alignItems: 'center',
                     justifyContent: 'center',
+                    opacity: m.profile.phone ? 1 : 0.4,
                   }}
                 >
                   <IconPhone color={palette.gold300} />
@@ -224,6 +299,18 @@ export function AlarmActiveScreen() {
         >
           <Text style={{ fontFamily: t.type.display, fontSize: 20, color: '#fff', lineHeight: 26 }}>
             📞  Call 112
+          </Text>
+        </PillButton>
+
+        <PillButton
+          size="lg"
+          block
+          disabled={smsBusy}
+          onPress={onTextContacts}
+          style={{ backgroundColor: 'rgba(255,255,255,0.10)', marginBottom: 10 }}
+        >
+          <Text style={{ fontFamily: t.type.bodySemibold, fontSize: 15, color: '#F2EFE3' }}>
+            {smsBusy ? 'Opening Messages…' : '📵  Text my emergency contacts'}
           </Text>
         </PillButton>
 

@@ -7,6 +7,8 @@ import { IconChevron, IconClock } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
 import { useCircle } from '../hooks/useCircle';
 import { useTrips } from '../hooks/useTrips';
+import { useAuth } from '../state/Auth';
+import { supabase } from '../lib/supabase';
 import { palette } from '../theme/tokens';
 import { RootStackParamList } from '../navigation/types';
 
@@ -22,6 +24,7 @@ export function TripSetupScreen() {
   const t = useTheme();
   const nav = useNavigation<Nav>();
   const { members } = useCircle();
+  const { user } = useAuth();
   const { activeTrip, loading, start } = useTrips();
   const [destination, setDestination] = useState('');
   const [etaHour, setEtaHour] = useState<number | null>(null);
@@ -52,6 +55,20 @@ export function TripSetupScreen() {
     const res = await start({ destination: destination.trim(), eta: etaString ?? undefined, buddyId, transport, locationInterval });
     setBusy(false);
     if (res.error) return setErr(res.error);
+
+    // Let the buddy know they can follow this trip (gives them a chat heads-up).
+    if (buddyId && user) {
+      const etaText = etaString ? ` (ETA ${etaString})` : '';
+      supabase
+        .from('messages')
+        .insert({
+          sender_id: user.id,
+          recipient_id: buddyId,
+          body: `🧭 I just started a trip to ${destination.trim()}${etaText}. You can follow my live location in Artemis.`,
+        })
+        .then(() => {});
+    }
+
     nav.replace('TripActive');
   };
 
@@ -215,7 +232,7 @@ export function TripSetupScreen() {
             HOW IT WORKS
           </Text>
           <Text variant="small" color={t.colors.inkSoft} style={{ marginTop: 4 }}>
-            We'll check in with you 5 minutes before ETA. If you don't respond within 5 minutes, your buddy sees your live location.
+            We'll ask if you're safe when you reach your ETA. If you don't confirm within 5 minutes, your buddy is alerted and your live location is shared.
           </Text>
         </View>
 
@@ -271,7 +288,7 @@ function EtaPickerSheet({
         Set arrival time
       </Text>
       <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 20 }}>
-        We'll check in 5 minutes before this time.
+        We'll check that you're safe when you reach this time.
       </Text>
 
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 24 }}>

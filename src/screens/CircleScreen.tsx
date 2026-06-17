@@ -19,7 +19,7 @@ export function CircleScreen() {
   const t = useTheme();
   const nav = useNavigation<Nav>();
   const { signOut } = useAuth();
-  const { members, pendingInvites, loading, invite, accept, decline, remove, refresh } = useCircle();
+  const { members, pendingInvites, loading, error, invite, accept, decline, remove, refresh } = useCircle();
   const [refreshing, setRefreshing] = useState(false);
   const onPullRefresh = async () => {
     setRefreshing(true);
@@ -77,6 +77,8 @@ export function CircleScreen() {
             </Pressable>
             <Pressable
               onPress={() => setAddOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Add someone to your circle"
               style={[
                 { width: 40, height: 40, borderRadius: 999, backgroundColor: t.colors.parchment, alignItems: 'center', justifyContent: 'center' },
                 t.shadows.soft,
@@ -97,6 +99,27 @@ export function CircleScreen() {
             circle
           </Text>
         </Text>
+
+        {error && (
+          <Pressable
+            onPress={refresh}
+            style={{
+              backgroundColor: 'rgba(192,57,43,0.08)',
+              borderWidth: 1,
+              borderColor: 'rgba(192,57,43,0.25)',
+              borderRadius: t.radii.md,
+              padding: 14,
+              marginBottom: 16,
+            }}
+          >
+            <Text variant="small" weight="semibold" color={palette.crimson}>
+              Couldn't load your circle
+            </Text>
+            <Text variant="meta" color={t.colors.inkSoft} style={{ marginTop: 2 }}>
+              {error} · Tap to retry
+            </Text>
+          </Pressable>
+        )}
 
         {pendingInvites.length > 0 && (
           <View style={{ marginBottom: 16 }}>

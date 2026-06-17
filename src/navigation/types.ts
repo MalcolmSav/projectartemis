@@ -6,10 +6,11 @@ export type RootStackParamList = {
   LocationShare: undefined;
   Trip: undefined;
   TripActive: undefined;
+  TripFollow: { tripId: string };
   FakeCall: undefined;
   FakeCallIncoming: undefined;
   FakeCallOnCall: undefined;
-  WellnessIncoming: { fromName?: string } | undefined;
+  WellnessIncoming: { fromName?: string; fromId?: string } | undefined;
   AlarmActive: undefined;
   EmergencyCall: undefined;
 };

@@ -97,7 +97,7 @@ export function CirclePersonScreen() {
         </Pressable>
         <View style={{ alignItems: 'center' }}>
           <Avatar name={displayName} size={84} status="ok" ring photoUri={profile.avatar_url ?? undefined} />
-          <Text style={{ fontFamily: t.type.display, fontSize: 28, marginTop: 12 }}>{displayName}</Text>
+          <Text style={{ fontFamily: t.type.display, fontSize: 28, lineHeight: 38, paddingTop: 4, marginTop: 10, textAlign: 'center' }}>{displayName}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
             <BowArrow size={14} />
             <Text variant="small" color={t.colors.gold700}>
