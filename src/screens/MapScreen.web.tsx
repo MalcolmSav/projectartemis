@@ -23,6 +23,23 @@ const REPORT_HEX: Record<ReportKind, string> = {
 // Stockholm fallback if location denied
 const FALLBACK = { latitude: 59.3293, longitude: 18.0686 };
 
+// How close a report has to be (metres) to count as "near you".
+const RISK_RADIUS_M = 500;
+
+/** Great-circle distance between two coords, in metres. */
+function distanceM(
+  a: { latitude: number; longitude: number },
+  b: { latitude: number; longitude: number },
+): number {
+  const R = 6371000;
+  const dLat = ((b.latitude - a.latitude) * Math.PI) / 180;
+  const dLng = ((b.longitude - a.longitude) * Math.PI) / 180;
+  const lat1 = (a.latitude * Math.PI) / 180;
+  const lat2 = (b.latitude * Math.PI) / 180;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export function MapScreen() {
@@ -53,6 +70,29 @@ export function MapScreen() {
 
   // Reports already have real lat/lng from the DB.
   const reportCoords = filter === 'all' ? reports : reports.filter((r) => r.kind === filter);
+
+  // Proximity risk awareness (same as native): reports near the user.
+  const nearby = useMemo(() => {
+    if (!coords) return { red: 0, yellow: 0, nearest: null as DBReport | null };
+    let red = 0,
+      yellow = 0;
+    let nearest: DBReport | null = null;
+    let nearestDist = Infinity;
+    for (const r of reports) {
+      const d = distanceM(coords, { latitude: r.lat, longitude: r.lng });
+      if (d > RISK_RADIUS_M) continue;
+      if (r.kind === 'red') red++;
+      else if (r.kind === 'yellow') yellow++;
+      if ((r.kind === 'red' || r.kind === 'yellow') && d < nearestDist) {
+        nearestDist = d;
+        nearest = r;
+      }
+    }
+    return { red, yellow, nearest };
+  }, [coords, reports]);
+
+  const riskLevel: 'alarm' | 'warn' | 'clear' =
+    nearby.red > 0 ? 'alarm' : nearby.yellow > 0 ? 'warn' : 'clear';
 
   // Real circle members — pull live coords from presence table (include stale for last-known pin).
   const circleCoords = useMemo(() => {
@@ -113,7 +153,11 @@ export function MapScreen() {
           </View>
         </View>
 
-        <View
+        <Pressable
+          onPress={() => {
+            if (nearby.nearest) setSelected(nearby.nearest);
+          }}
+          disabled={!nearby.nearest}
           style={[
             {
               flexDirection: 'row',
@@ -122,20 +166,33 @@ export function MapScreen() {
               backgroundColor: t.colors.parchment,
               padding: 12,
               borderRadius: t.radii.md,
+              borderLeftWidth: 3,
+              borderLeftColor:
+                riskLevel === 'alarm' ? palette.crimson : riskLevel === 'warn' ? palette.statusWarn : palette.statusOk,
             },
             t.shadows.soft,
           ]}
         >
           <View style={{ flex: 1 }}>
             <Text variant="small" weight="semibold">
-              Community Safety Layer
+              {riskLevel === 'alarm'
+                ? 'Unsafe area nearby'
+                : riskLevel === 'warn'
+                  ? 'Stay aware nearby'
+                  : 'Clear around you'}
             </Text>
             <Text variant="meta" color={t.colors.inkMute}>
-              {reportCoords.length} reports {filter === 'all' ? 'nearby' : `(${filter})`}
+              {coords
+                ? nearby.red + nearby.yellow > 0
+                  ? `${[nearby.red ? `${nearby.red} unsafe` : null, nearby.yellow ? `${nearby.yellow} uneasy` : null]
+                      .filter(Boolean)
+                      .join(' · ')} within ${RISK_RADIUS_M} m · tap to view`
+                  : `No alerts within ${RISK_RADIUS_M} m · ${reportCoords.length} reports on map`
+                : `${reportCoords.length} reports nearby`}
             </Text>
           </View>
           <Toggle on={showLayer} onChange={setShowLayer} />
-        </View>
+        </Pressable>
 
         {showLayer && (
           <View style={{ flexDirection: 'row', gap: 6 }}>

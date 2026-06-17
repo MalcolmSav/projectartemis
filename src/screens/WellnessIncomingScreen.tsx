@@ -25,6 +25,7 @@ export function WellnessIncomingScreen() {
   const nav = useNavigation<Nav>();
   const route = useRoute<RouteProp<RootStackParamList, 'WellnessIncoming'>>();
   const fromName = route.params?.fromName ?? 'Someone';
+  const fromId = route.params?.fromId;
   const { respondWellness } = useCheckIns();
   const [busy, setBusy] = useState(false);
 
@@ -42,7 +43,7 @@ export function WellnessIncomingScreen() {
   const respond = async (kind: 'ok' | 'wellness_response' | 'alarm', note: string) => {
     if (busy) return;
     setBusy(true);
-    await respondWellness(kind, note);
+    await respondWellness(kind, note, fromId);
     setBusy(false);
     if (kind === 'alarm') nav.replace('AlarmActive');
     else nav.goBack();
@@ -67,7 +68,19 @@ export function WellnessIncomingScreen() {
             marginBottom: 18,
           }}
         >
-          <Text style={{ fontFamily: t.type.display, fontSize: 40, color: palette.forest900 }}>
+          <Text
+            style={{
+              fontFamily: t.type.display,
+              fontSize: 40,
+              lineHeight: 96,
+              width: 96,
+              height: 96,
+              textAlign: 'center',
+              textAlignVertical: 'center' as any,
+              includeFontPadding: false as any,
+              color: palette.forest900,
+            }}
+          >
             {fromName[0]}
           </Text>
         </LinearGradient>

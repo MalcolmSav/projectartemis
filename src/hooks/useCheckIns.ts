@@ -29,12 +29,24 @@ export interface FriendNeedHelp {
   checkIn: CheckIn;
 }
 
+export type SentCheckStatus = 'pending' | 'ok' | 'need_help' | 'alarm';
+
+export interface SentCheck {
+  id: string; // the wellness_request id
+  to: Profile | null;
+  createdAt: string;
+  status: SentCheckStatus;
+  respondedAt: string | null;
+}
+
 export function useCheckIns() {
   const { user } = useAuth();
   const [latestByUser, setLatestByUser] = useState<Record<string, CheckIn>>({});
+  const [myLastOkAt, setMyLastOkAt] = useState<string | null>(null);
   const [pendingForMe, setPendingForMe] = useState<PendingRequest | null>(null);
   const [friendAlarm, setFriendAlarm] = useState<FriendAlarm | null>(null);
   const [friendNeedHelp, setFriendNeedHelp] = useState<FriendNeedHelp | null>(null);
+  const [sentChecks, setSentChecks] = useState<SentCheck[]>([]);
   const [loading, setLoading] = useState(true);
   const shownAlarmIds = useRef<Set<string>>(new Set());
   const shownNeedHelpIds = useRef<Set<string>>(new Set());
@@ -54,6 +66,11 @@ export function useCheckIns() {
     });
     setLatestByUser(map);
 
+    // My most recent *actual* check-in (kind 'ok') — used for the "your last
+    // check-in" label so that sending a wellness check doesn't masquerade as one.
+    const myOk = (all ?? []).find((c: CheckIn) => c.user_id === user.id && c.kind === 'ok');
+    setMyLastOkAt(myOk ? myOk.created_at : null);
+
     // Find a pending wellness_request directed at me, not yet responded to
     const { data: requests } = await supabase
       .from('check_ins')
@@ -71,12 +88,17 @@ export function useCheckIns() {
         if (Date.now() - reqTime > WELLNESS_TIMEOUT_MS) continue;
         const { data: resp } = await supabase
           .from('check_ins')
-          .select('id, created_at')
+          .select('id, kind, target_id, created_at')
           .eq('user_id', user.id)
           .in('kind', ['wellness_response', 'ok', 'alarm'])
           .gte('created_at', req.created_at)
-          .limit(1);
-        if (!resp || resp.length === 0) {
+          .order('created_at', { ascending: false })
+          .limit(20);
+        // Answered if I raised an alarm (circle-wide) or replied to THIS requester.
+        const answered = (resp ?? []).some(
+          (r: any) => r.kind === 'alarm' || r.target_id === req.user_id,
+        );
+        if (!answered) {
           chosen = req as PendingRequest;
           break;
         }
@@ -84,56 +106,74 @@ export function useCheckIns() {
     }
     setPendingForMe(chosen);
 
-    // Detect if a friend I sent a wellness request to has responded with an alarm
-    const { data: mySent } = await supabase
+    // My recent wellness checks → who I checked and how each was answered.
+    // Powers the sender-side history/feedback AND the urgent interrupts.
+    const { data: mySentRaw } = await supabase
       .from('check_ins')
       .select('*')
       .eq('user_id', user.id)
       .eq('kind', 'wellness_request')
-      .gte('created_at', new Date(Date.now() - WELLNESS_TIMEOUT_MS).toISOString())
       .order('created_at', { ascending: false })
       .limit(10);
+    const mySent = (mySentRaw ?? []) as CheckIn[];
+    const targetIds = Array.from(new Set(mySent.map((r) => r.target_id).filter(Boolean))) as string[];
 
-    if (mySent && mySent.length > 0) {
-      for (const req of mySent as CheckIn[]) {
-        if (!req.target_id) continue;
-        const { data: alarms } = await supabase
+    const targetProfiles: Record<string, Profile> = {};
+    let theirResponses: CheckIn[] = [];
+    if (targetIds.length > 0) {
+      const [{ data: profs }, { data: resps }] = await Promise.all([
+        supabase.from('profiles').select('*').in('id', targetIds),
+        supabase
           .from('check_ins')
-          .select('*, profile:profiles!check_ins_user_id_fkey(*)')
-          .eq('user_id', req.target_id)
-          .eq('kind', 'alarm')
-          .gte('created_at', req.created_at)
+          .select('*')
+          .in('user_id', targetIds)
+          .in('kind', ['ok', 'wellness_response', 'alarm'])
           .order('created_at', { ascending: false })
-          .limit(1);
-        if (alarms && alarms.length > 0) {
-          const alarm = alarms[0] as any;
-          if (!shownAlarmIds.current.has(alarm.id)) {
-            shownAlarmIds.current.add(alarm.id);
-            setFriendAlarm({ profile: alarm.profile ?? null, checkIn: alarm as CheckIn });
-          }
-          break;
-        }
+          .limit(100),
+      ]);
+      (profs ?? []).forEach((p: Profile) => (targetProfiles[p.id] = p));
+      theirResponses = (resps ?? []) as CheckIn[];
+    }
 
-        // Also detect "need help" wellness responses
-        const { data: needHelps } = await supabase
-          .from('check_ins')
-          .select('*, profile:profiles!check_ins_user_id_fkey(*)')
-          .eq('user_id', req.target_id)
-          .eq('kind', 'wellness_response')
-          .eq('note', 'need_help')
-          .gte('created_at', req.created_at)
-          .order('created_at', { ascending: false })
-          .limit(1);
-        if (needHelps && needHelps.length > 0) {
-          const nh = needHelps[0] as any;
-          if (!shownNeedHelpIds.current.has(nh.id)) {
-            shownNeedHelpIds.current.add(nh.id);
-            setFriendNeedHelp({ profile: nh.profile ?? null, checkIn: nh as CheckIn });
-          }
-          break;
-        }
+    const sent: SentCheck[] = [];
+    for (const req of mySent) {
+      if (!req.target_id) continue;
+      const reqTime = new Date(req.created_at).getTime();
+      const after = theirResponses.filter(
+        (c) =>
+          c.user_id === req.target_id &&
+          new Date(c.created_at).getTime() >= reqTime &&
+          // Precise: a reply aimed at me, or a circle-wide alarm.
+          (c.kind === 'alarm' || c.target_id === user.id),
+      );
+      // Most-relevant outcome wins: alarm > need_help > ok.
+      const alarmResp = after.find((c) => c.kind === 'alarm');
+      const needHelpResp = after.find((c) => c.kind === 'wellness_response' && c.note === 'need_help');
+      const okResp = after.find((c) => c.kind === 'ok' || c.kind === 'wellness_response');
+      let status: SentCheckStatus = 'pending';
+      let answer: CheckIn | null = null;
+      if (alarmResp) { status = 'alarm'; answer = alarmResp; }
+      else if (needHelpResp) { status = 'need_help'; answer = needHelpResp; }
+      else if (okResp) { status = 'ok'; answer = okResp; }
+      sent.push({
+        id: req.id,
+        to: targetProfiles[req.target_id] ?? null,
+        createdAt: req.created_at,
+        status,
+        respondedAt: answer?.created_at ?? null,
+      });
+
+      // Urgent interrupts (alarm / need-help) within the active window, once each.
+      const withinWindow = Date.now() - reqTime <= WELLNESS_TIMEOUT_MS;
+      if (withinWindow && alarmResp && !shownAlarmIds.current.has(alarmResp.id)) {
+        shownAlarmIds.current.add(alarmResp.id);
+        setFriendAlarm({ profile: targetProfiles[req.target_id] ?? null, checkIn: alarmResp });
+      } else if (withinWindow && needHelpResp && !shownNeedHelpIds.current.has(needHelpResp.id)) {
+        shownNeedHelpIds.current.add(needHelpResp.id);
+        setFriendNeedHelp({ profile: targetProfiles[req.target_id] ?? null, checkIn: needHelpResp });
       }
     }
+    setSentChecks(sent);
 
     setLoading(false);
   }, [user]);
@@ -175,28 +215,49 @@ export function useCheckIns() {
     [user],
   );
 
-  /** Ask a friend if they're OK. */
+  /** Ask a friend if they're OK. One check per friend per 10 min (anti-spam). */
   const sendWellnessRequest = useCallback(
     async (friendId: string, note?: string) => {
       if (!user) return { error: 'Not signed in' };
+      const since = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+      const { data: recent } = await supabase
+        .from('check_ins')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('target_id', friendId)
+        .eq('kind', 'wellness_request')
+        .gte('created_at', since)
+        .limit(1);
+      if (recent && recent.length > 0) {
+        return { error: 'You already checked on them in the last few minutes — give them a moment to respond.' };
+      }
       const { error } = await supabase.from('check_ins').insert({
         user_id: user.id,
         target_id: friendId,
         kind: 'wellness_request' as CheckInKind,
         note: note ?? null,
       });
+      if (!error) await refresh();
       return error ? { error: error.message } : {};
     },
-    [user],
+    [user, refresh],
   );
 
-  /** Respond to a wellness check directed at me. */
+  /**
+   * Respond to a wellness check from `requesterId`. The reply is *targeted* at
+   * that requester (target_id) so the sender can see exactly who answered and
+   * the pending check clears only for them. An alarm stays broadcast (no target)
+   * because it's a circle-wide emergency, not a private reply.
+   */
   const respondWellness = useCallback(
-    async (kind: 'ok' | 'wellness_response' | 'alarm', note?: string) => {
+    async (kind: 'ok' | 'wellness_response' | 'alarm', note?: string, requesterId?: string | null) => {
       if (!user) return { error: 'Not signed in' };
-      const { error } = await supabase
-        .from('check_ins')
-        .insert({ user_id: user.id, kind: kind as CheckInKind, note: note ?? null });
+      const { error } = await supabase.from('check_ins').insert({
+        user_id: user.id,
+        kind: kind as CheckInKind,
+        note: note ?? null,
+        target_id: kind === 'alarm' ? null : requesterId ?? null,
+      });
       if (!error) await refresh();
       return error ? { error: error.message } : {};
     },
@@ -208,7 +269,9 @@ export function useCheckIns() {
 
   return {
     latestByUser,
+    myLastOkAt,
     pendingForMe,
+    sentChecks,
     friendAlarm,
     clearFriendAlarm,
     friendNeedHelp,

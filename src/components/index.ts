@@ -8,4 +8,5 @@ export { Toggle } from './Toggle';
 export { TopBar } from './TopBar';
 export * as Icons from './icons';
 export { BottomSheet } from './BottomSheet';
+export { OfflineBanner } from './OfflineBanner';
 export { SectionTitle, Divider, StatusPill, CircleCard, QuickAction, EventCard, Row } from './helpers';

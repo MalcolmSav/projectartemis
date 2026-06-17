@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ScrollView, View, Pressable, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
+import * as Battery from 'expo-battery';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Text, Eyebrow, Card, PillButton, Avatar } from '../components';
@@ -10,6 +11,7 @@ import { useTheme } from '../theme/ThemeProvider';
 import { useTrips } from '../hooks/useTrips';
 import { useCircle } from '../hooks/useCircle';
 import { useCheckIns } from '../hooks/useCheckIns';
+import { useHomePlace } from '../hooks/useHomePlace';
 import { useAuth } from '../state/Auth';
 import { supabase } from '../lib/supabase';
 import { palette } from '../theme/tokens';
@@ -17,6 +19,23 @@ import { RootStackParamList } from '../navigation/types';
 
 // Grace period after ETA before the buddy/circle is auto-alerted.
 const ETA_GRACE_MS = 5 * 60 * 1000;
+
+// Warn the buddy while there's still enough charge to actually send the message.
+const LOW_BATTERY_THRESHOLD = 0.15;
+
+// How close (metres) to your saved home counts as "arrived".
+const ARRIVAL_RADIUS_M = 120;
+
+/** Great-circle distance between two coords, in metres. */
+function distanceM(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const R = 6371000;
+  const dLat = ((bLat - aLat) * Math.PI) / 180;
+  const dLng = ((bLng - aLng) * Math.PI) / 180;
+  const la1 = (aLat * Math.PI) / 180;
+  const la2 = (bLat * Math.PI) / 180;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 const EMOJI: Record<string, string> = { walk: '🚶', transit: '🚇', car: '🚗', taxi: '🚕' };
@@ -26,7 +45,8 @@ export function TripActiveScreen() {
   const nav = useNavigation<Nav>();
   const { activeTrip, loading, finish } = useTrips();
   const { members } = useCircle();
-  const { recordAlarm } = useCheckIns();
+  const { recordAlarm, recordOk } = useCheckIns();
+  const { home } = useHomePlace();
   const { user } = useAuth();
   const [now, setNow] = useState(Date.now());
   const [lastSent, setLastSent] = useState<Date | null>(null);
@@ -35,6 +55,7 @@ export function TripActiveScreen() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const escalateRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const arrivedHomeRef = useRef(false);
 
   // Compute the actual ETA timestamp from the "HH:MM" string + started_at date
   const etaTimestamp = React.useMemo(() => {
@@ -61,6 +82,50 @@ export function TripActiveScreen() {
     const id = setInterval(() => setNow(Date.now()), 5000);
     return () => clearInterval(id);
   }, []);
+
+  // Battery-aware alert: if the phone gets low during the trip, message the buddy
+  // with the last location while there's still charge to send it. Fires once.
+  const lowBatteryWarnedRef = useRef(false);
+  useEffect(() => {
+    if (!activeTrip?.buddy_id || !user) return;
+    let cancelled = false;
+
+    const warnBuddyLowBattery = async (level: number) => {
+      if (cancelled || lowBatteryWarnedRef.current) return;
+      lowBatteryWarnedRef.current = true;
+      let locLink = '';
+      try {
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        locLink = ` Last location: https://maps.google.com/?q=${loc.coords.latitude},${loc.coords.longitude}`;
+      } catch {
+        // best-effort
+      }
+      const pct = Math.round(level * 100);
+      await supabase.from('messages').insert({
+        sender_id: user.id,
+        recipient_id: activeTrip.buddy_id,
+        body: `⚠️ My phone battery is low (${pct}%) during my trip to ${activeTrip.destination}. If you lose contact, this is my last known spot.${locLink}`,
+      });
+    };
+
+    (async () => {
+      try {
+        const level = await Battery.getBatteryLevelAsync();
+        if (level >= 0 && level <= LOW_BATTERY_THRESHOLD) await warnBuddyLowBattery(level);
+      } catch {
+        // battery API unavailable (e.g. simulator)
+      }
+    })();
+
+    const sub = Battery.addBatteryLevelListener(({ batteryLevel }) => {
+      if (batteryLevel <= LOW_BATTERY_THRESHOLD) warnBuddyLowBattery(batteryLevel);
+    });
+
+    return () => {
+      cancelled = true;
+      sub.remove();
+    };
+  }, [activeTrip?.buddy_id, activeTrip?.destination, user]);
 
   // Auto-escalation: alert the circle and raise the alarm.
   const escalate = useCallback(async () => {
@@ -137,6 +202,23 @@ export function TripActiveScreen() {
         );
         setLastSent(new Date());
         setNextIn(activeTrip.location_interval ?? 60);
+
+        // Geofenced auto check-in: if we've reached the saved home, end the trip
+        // as "arrived" automatically — no tapping needed.
+        if (home && !arrivedHomeRef.current) {
+          const d = distanceM(loc.coords.latitude, loc.coords.longitude, home.lat, home.lng);
+          if (d <= ARRIVAL_RADIUS_M) {
+            arrivedHomeRef.current = true;
+            if (escalateRef.current) {
+              clearTimeout(escalateRef.current);
+              escalateRef.current = null;
+            }
+            await recordOk('Arrived home safe — auto check-in');
+            await finish('arrived');
+            Alert.alert('Welcome home 🏡', "You've arrived safely. Your trip ended and your buddy was notified.");
+            nav.goBack();
+          }
+        }
       } catch {
         // best-effort
       }
@@ -154,7 +236,7 @@ export function TripActiveScreen() {
       if (timerRef.current) clearInterval(timerRef.current);
       if (countdownRef.current) clearInterval(countdownRef.current);
     };
-  }, [activeTrip?.id, user]);
+  }, [activeTrip?.id, user, home, recordOk, finish, nav]);
 
   useEffect(() => {
     if (!loading && !activeTrip) {
