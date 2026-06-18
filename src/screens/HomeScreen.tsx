@@ -41,6 +41,7 @@ import { useCircle } from '../hooks/useCircle';
 import { useCheckIns } from '../hooks/useCheckIns';
 import { useSafetyTimer } from '../hooks/useSafetyTimer';
 import { useFollowedTrips } from '../hooks/useFollowedTrips';
+import { useT } from '../i18n';
 import { useConversations } from '../hooks/useConversations';
 import { usePresence } from '../hooks/usePresence';
 import { useAuth } from '../state/Auth';
@@ -75,6 +76,7 @@ function formatCountdown(ms: number) {
 
 export function HomeScreen() {
   const t = useTheme();
+  const tr = useT();
   const nav = useNavigation<Nav>();
   const { profile } = useAuth();
   const { members, pendingInvites, refresh: refreshCircle } = useCircle();
@@ -191,7 +193,7 @@ export function HomeScreen() {
     );
   }, [friendAlarm]);
 
-  const lastOkLabel = myLastOkAt ? relativeTime(myLastOkAt) : 'no check-in yet';
+  const lastOkLabel = myLastOkAt ? relativeTime(myLastOkAt) : tr('no check-in yet');
 
   const pulseScale = useSharedValue(0.5);
   const pulseOpacity = useSharedValue(0);
@@ -304,11 +306,11 @@ export function HomeScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onPullRefresh} tintColor={t.colors.forest700} />}
       >
         <View style={{ paddingHorizontal: t.spacing.pageH, paddingBottom: 16 }}>
-          <Eyebrow style={{ marginBottom: 8 }}>{`${greeting()}, ${profile?.name ?? ''}`}</Eyebrow>
+          <Eyebrow style={{ marginBottom: 8 }}>{`${tr(greeting())}, ${profile?.name ?? ''}`}</Eyebrow>
           <Text variant="displayH1" style={{ lineHeight: 38 }}>
-            Your circle is{' '}
+            {tr('Your circle is')}{' '}
             <Text variant="displayH1" italic accent style={{ lineHeight: 38 }}>
-              watching over you.
+              {tr('watching over you.')}
             </Text>
           </Text>
         </View>
@@ -359,12 +361,12 @@ export function HomeScreen() {
               }}
             >
               <View style={{ flex: 1 }}>
-                <Eyebrow color={palette.gold300}>SAFETY TIMER RUNNING</Eyebrow>
+                <Eyebrow color={palette.gold300}>{tr('SAFETY TIMER RUNNING')}</Eyebrow>
                 <Text style={{ fontFamily: t.type.display, fontSize: 30, lineHeight: 38, paddingTop: 2, color: '#fff', marginTop: 2 }}>
                   {formatCountdown(timerExpiresAt.getTime() - nowTick)}
                 </Text>
                 <Text variant="meta" color="rgba(255,255,255,0.7)" style={{ marginTop: 2 }}>
-                  Your circle is alerted if you don't confirm.
+                  {tr("Your circle is alerted if you don't confirm.")}
                 </Text>
               </View>
               <Pressable
@@ -382,7 +384,7 @@ export function HomeScreen() {
                 }}
               >
                 <Text style={{ fontFamily: t.type.bodyBold, color: palette.forest900, fontSize: 15 }}>
-                  I'm safe
+                  {tr("I'm safe")}
                 </Text>
               </Pressable>
             </View>
@@ -409,12 +411,12 @@ export function HomeScreen() {
               >
                 <Avatar name={travelerName} size={44} photoUri={ft.traveler?.avatar_url ?? undefined} />
                 <View style={{ flex: 1 }}>
-                  <Eyebrow color={t.colors.gold700}>FOLLOW THEIR TRIP 👀</Eyebrow>
+                  <Eyebrow color={t.colors.gold700}>{tr('FOLLOW THEIR TRIP 👀')}</Eyebrow>
                   <Text variant="body" weight="semibold" style={{ marginTop: 2 }}>
-                    {travelerName} is heading to {ft.destination}
+                    {tr('{name} is heading to {dest}', { name: travelerName, dest: ft.destination })}
                   </Text>
                   <Text variant="meta" color={t.colors.inkSoft}>
-                    Tap to watch their live location
+                    {tr('Tap to watch their live location')}
                   </Text>
                 </View>
                 <IconChevron color={t.colors.inkMute} />
@@ -432,13 +434,13 @@ export function HomeScreen() {
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
               >
                 <Text variant="small" color={t.colors.inkSoft}>
-                  See all
+                  {tr('See all')}
                 </Text>
                 <IconChevron size={12} color={t.colors.inkSoft} />
               </Pressable>
             }
           >
-            My Circle
+            {tr('My Circle')}
           </SectionTitle>
         </View>
         <ScrollView
@@ -460,11 +462,11 @@ export function HomeScreen() {
               }}
             >
               <Text variant="small" color={t.colors.inkSoft} style={{ textAlign: 'center', marginBottom: 12 }}>
-                Your circle is empty.
-                {'\n'}Go to the Circle tab below to add someone by username.
+                {tr('Your circle is empty.')}
+                {'\n'}{tr('Go to the Circle tab below to add someone by username.')}
               </Text>
               <PillButton size="md" onPress={() => nav.navigate('Tabs' as any, { screen: 'Circle' } as any)}>
-                Open Circle
+                {tr('Open Circle')}
               </PillButton>
             </View>
           ) : (
@@ -510,50 +512,50 @@ export function HomeScreen() {
 
         {/* Quick actions */}
         <View style={{ paddingHorizontal: t.spacing.pageH, paddingTop: 20 }}>
-          <SectionTitle>Right now</SectionTitle>
+          <SectionTitle>{tr('Right now')}</SectionTitle>
           <View style={{ gap: 10 }}>
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <QuickAction
                 icon={<IconLocate color={t.colors.forest700} />}
-                label="Trip Mode"
-                sub="Track me home"
+                label={tr('Trip Mode')}
+                sub={tr('Track me home')}
                 onPress={() => nav.navigate('Trip')}
               />
               <QuickAction
                 icon={<IconMap color={t.colors.forest700} />}
-                label="Open map"
-                sub="Reports near you"
+                label={tr('Open map')}
+                sub={tr('Reports near you')}
                 onPress={() => nav.navigate('Tabs' as any, { screen: 'Map' } as any)}
               />
             </View>
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <QuickAction
                 icon={<IconPhone size={18} color={t.colors.forest700} />}
-                label="Fake call"
-                sub="Way out"
+                label={tr('Fake call')}
+                sub={tr('Way out')}
                 onPress={() => nav.navigate('FakeCall')}
               />
               <QuickAction
                 icon={<IconShare color={t.colors.forest700} />}
-                label="Share location"
-                sub="Sharing with your circle"
+                label={tr('Share location')}
+                sub={tr('Sharing with your circle')}
                 onPress={() => nav.navigate('LocationShare')}
               />
             </View>
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <QuickAction
                 icon={<IconCal color={t.colors.forest700} />}
-                label="Calendar"
-                sub="Upcoming"
+                label={tr('Calendar')}
+                sub={tr('Upcoming')}
                 onPress={() => nav.navigate('Tabs' as any, { screen: 'Calendar' } as any)}
               />
               <QuickAction
                 icon={<IconClock size={18} color={timerExpiresAt ? palette.gold500 : t.colors.forest700} />}
-                label={timerExpiresAt ? 'Check-in running' : 'Check on me'}
+                label={timerExpiresAt ? tr('Check-in running') : tr('Check on me')}
                 sub={
                   timerExpiresAt
-                    ? `ends ${timerExpiresAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-                    : 'Alert if I go quiet'
+                    ? tr('ends {time}', { time: timerExpiresAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })
+                    : tr('Alert if I go quiet')
                 }
                 accent={!!timerExpiresAt}
                 onPress={() => setSafetyOpen(true)}
@@ -576,7 +578,7 @@ export function HomeScreen() {
               ]}
             >
               <Text style={{ fontFamily: t.type.bodySemibold, fontSize: 15, color: palette.crimson }}>
-                📞  Call 112 — emergency instructions
+                {tr('📞  Call 112 — emergency instructions')}
               </Text>
             </Pressable>
           </View>
@@ -632,6 +634,7 @@ function CheckOnMeSheet({
   onCancel: () => void;
 }) {
   const t = useTheme();
+  const tr = useT();
   const [mode, setMode] = useState<'in' | 'at'>('in');
   const now = new Date();
   const [hour, setHour] = useState(now.getHours());
@@ -652,11 +655,10 @@ function CheckOnMeSheet({
   return (
     <BottomSheet visible={open} onClose={onClose}>
       <Text style={{ fontFamily: t.type.display, fontSize: 24, lineHeight: 32, paddingTop: 2, marginBottom: 4 }}>
-        Check on me
+        {tr('Check on me')}
       </Text>
       <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 16 }}>
-        If you don't tap "I'm safe" in time, your circle is alerted automatically and your live location is
-        shared. Good for a walk, a date, or a late shift.
+        {tr('If you don\'t tap "I\'m safe" in time, your circle is alerted automatically and your live location is shared. Good for a walk, a date, or a late shift.')}
       </Text>
 
       {active ? (
@@ -669,16 +671,16 @@ function CheckOnMeSheet({
               marginBottom: 14,
             }}
           >
-            <Eyebrow color={t.colors.gold700}>RUNNING</Eyebrow>
+            <Eyebrow color={t.colors.gold700}>{tr('RUNNING')}</Eyebrow>
             <Text variant="body" weight="semibold" style={{ marginTop: 2 }}>
-              Alerts your circle at {active.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              {tr('Alerts your circle at {time}', { time: active.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })}
             </Text>
           </View>
           <PillButton variant="danger" block style={{ marginBottom: 8 }} onPress={onCancel}>
-            Cancel check-in
+            {tr('Cancel check-in')}
           </PillButton>
           <PillButton variant="ghost" block onPress={onClose}>
-            Close
+            {tr('Close')}
           </PillButton>
         </>
       ) : (
@@ -700,7 +702,7 @@ function CheckOnMeSheet({
                   }}
                 >
                   <Text variant="small" weight="semibold" color={activeMode ? palette.gold300 : t.colors.inkSoft}>
-                    {m === 'in' ? 'In…' : 'At a time'}
+                    {m === 'in' ? tr('In…') : tr('At a time')}
                   </Text>
                 </Pressable>
               );
@@ -709,7 +711,7 @@ function CheckOnMeSheet({
 
           {mode === 'in' ? (
             <>
-              <Eyebrow style={{ marginBottom: 8 }}>ALERT MY CIRCLE IF I'M SILENT FOR</Eyebrow>
+              <Eyebrow style={{ marginBottom: 8 }}>{tr("ALERT MY CIRCLE IF I'M SILENT FOR")}</Eyebrow>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
                 {DURATIONS.map((m) => (
                   <Pressable
@@ -723,7 +725,7 @@ function CheckOnMeSheet({
                     }}
                   >
                     <Text variant="body" weight="semibold">
-                      {m < 60 ? `${m} min` : `${m / 60} hr`}
+                      {m < 60 ? tr('{m} min', { m }) : tr('{h} hr', { h: m / 60 })}
                     </Text>
                   </Pressable>
                 ))}
@@ -731,7 +733,7 @@ function CheckOnMeSheet({
             </>
           ) : (
             <>
-              <Eyebrow style={{ marginBottom: 8 }}>CHECK ON ME AT</Eyebrow>
+              <Eyebrow style={{ marginBottom: 8 }}>{tr('CHECK ON ME AT')}</Eyebrow>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 20 }}>
                 <View style={{ alignItems: 'center', gap: 8 }}>
                   <Pressable onPress={() => bump(setHour, hour, 24, 1)} style={stepBtn(t)}>
@@ -758,13 +760,13 @@ function CheckOnMeSheet({
                 </View>
               </View>
               <PillButton block style={{ marginBottom: 8 }} onPress={startAtTime}>
-                Check on me at {fmt2(hour)}:{fmt2(minute)}
+                {tr('Check on me at {time}', { time: `${fmt2(hour)}:${fmt2(minute)}` })}
               </PillButton>
             </>
           )}
 
           <PillButton variant="ghost" block onPress={onClose}>
-            Cancel
+            {tr('Cancel')}
           </PillButton>
         </>
       )}
@@ -934,16 +936,17 @@ function SendHero({
   hasFriends: boolean;
 }) {
   const t = useTheme();
+  const tr = useT();
   return (
     <Card>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 14 }}>
         <View>
-          <Eyebrow>Your last check-in</Eyebrow>
+          <Eyebrow>{tr('Your last check-in')}</Eyebrow>
           <Text style={{ fontFamily: t.type.display, fontSize: 18, lineHeight: 26, paddingTop: 2 }}>
             {lastOkLabel}
           </Text>
         </View>
-        <StatusPill status="ok" label="All clear" />
+        <StatusPill status="ok" label={tr('All clear')} />
       </View>
 
       <PillButton
@@ -952,10 +955,10 @@ function SendHero({
         iconLeft={<IconShield size={18} color={palette.gold300} />}
         onPress={onOpen}
       >
-        {hasFriends ? 'Send wellness check' : 'Add a friend first'}
+        {hasFriends ? tr('Send wellness check') : tr('Add a friend first')}
       </PillButton>
       <Text variant="meta" color={t.colors.inkMute} style={{ textAlign: 'center', marginTop: 8 }}>
-        Pick a friend. They'll get the check-in prompt.
+        {tr("Pick a friend. They'll get the check-in prompt.")}
       </Text>
     </Card>
   );

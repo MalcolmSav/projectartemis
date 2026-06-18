@@ -20,6 +20,7 @@ import {
   DMSans_700Bold,
 } from '@expo-google-fonts/dm-sans';
 import { ThemeProvider, useTheme } from './src/theme/ThemeProvider';
+import { LanguageProvider } from './src/i18n';
 import { AppStateProvider } from './src/state/AppState';
 import { AuthProvider, useAuth } from './src/state/Auth';
 import { RootNavigator } from './src/navigation/RootNavigator';
@@ -115,14 +116,16 @@ export default function App() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <ThemeProvider initialMode="light">
-          <AuthProvider>
-            <AppStateProvider>
-              <StatusBar style="dark" />
-              <GatedApp />
-              <CalendarReminders />
-              <OfflineBanner />
-            </AppStateProvider>
-          </AuthProvider>
+          <LanguageProvider>
+            <AuthProvider>
+              <AppStateProvider>
+                <StatusBar style="dark" />
+                <GatedApp />
+                <CalendarReminders />
+                <OfflineBanner />
+              </AppStateProvider>
+            </AuthProvider>
+          </LanguageProvider>
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
