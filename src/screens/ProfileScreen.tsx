@@ -214,7 +214,7 @@ export function ProfileScreen() {
           </View>
           <Divider style={{ marginVertical: 12 }} />
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Text variant="body">{tr('LANGUAGE')}</Text>
+            <Text variant="body">{tr('Language')}</Text>
             <View style={{ flexDirection: 'row', backgroundColor: t.colors.moonlight, borderRadius: 999, padding: 3 }}>
               {(['en', 'sv'] as const).map((l) => {
                 const active = lang === l;

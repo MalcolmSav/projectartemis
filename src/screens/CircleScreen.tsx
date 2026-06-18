@@ -5,6 +5,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { TopBar, Text, Eyebrow, Avatar, Card, PillButton, BottomSheet, Divider } from '../components';
 import { IconPlus, IconChevron, BowArrow } from '../components/icons';
 import { supabase, Profile } from '../lib/supabase';
+import { personName } from '../lib/person';
 import { useTheme } from '../theme/ThemeProvider';
 import { palette } from '../theme/tokens';
 import { useCircle } from '../hooks/useCircle';
@@ -166,7 +167,7 @@ export function CircleScreen() {
               <Pressable
                 key={m.edgeId}
                 onPress={() => nav.navigate('CirclePerson', { id: m.profile.id })}
-                onLongPress={() => confirmRemove(m.edgeId, m.profile.name ?? m.profile.email)}
+                onLongPress={() => confirmRemove(m.edgeId, personName(m.profile))}
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
@@ -177,7 +178,7 @@ export function CircleScreen() {
                 }}
               >
                 <Avatar
-                  name={m.profile.name ?? m.profile.email}
+                  name={personName(m.profile)}
                   size={52}
                   status={statusFor(m.profile.id)}
                   photoUri={m.profile.avatar_url ?? undefined}
@@ -185,7 +186,7 @@ export function CircleScreen() {
                 <View style={{ flex: 1 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                     <Text variant="body" weight="semibold">
-                      {m.profile.name ?? m.profile.email}
+                      {personName(m.profile)}
                     </Text>
                     {m.verified && <BowArrow size={12} />}
                   </View>
@@ -316,9 +317,9 @@ function InviteSheet({
             marginBottom: 14,
           }}
         >
-          <Avatar name={selected.name ?? selected.email} size={40} photoUri={selected.avatar_url ?? undefined} />
+          <Avatar name={personName(selected)} size={40} photoUri={selected.avatar_url ?? undefined} />
           <View style={{ flex: 1 }}>
-            <Text variant="body" weight="semibold">{selected.name ?? selected.email}</Text>
+            <Text variant="body" weight="semibold">{personName(selected)}</Text>
             {selected.username && (
               <Text variant="meta" color={t.colors.inkMute}>@{selected.username}</Text>
             )}
@@ -360,9 +361,9 @@ function InviteSheet({
                     onPress={() => pickUser(p)}
                     style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 }}
                   >
-                    <Avatar name={p.name ?? p.email} size={38} photoUri={p.avatar_url ?? undefined} />
+                    <Avatar name={personName(p)} size={38} photoUri={p.avatar_url ?? undefined} />
                     <View style={{ flex: 1 }}>
-                      <Text variant="body" weight="semibold">{p.name ?? p.email}</Text>
+                      <Text variant="body" weight="semibold">{personName(p)}</Text>
                       {p.username && (
                         <Text variant="meta" color={t.colors.inkMute}>@{p.username}</Text>
                       )}

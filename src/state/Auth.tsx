@@ -12,6 +12,7 @@ interface AuthValue {
   signIn: (email: string, password: string) => Promise<{ error?: string }>;
   signUp: (email: string, password: string, name: string, username: string) => Promise<{ error?: string }>;
   signInWithGoogleToken: (idToken: string) => Promise<{ error?: string }>;
+  signInWithAppleToken: (idToken: string, fullName?: string | null) => Promise<{ error?: string }>;
   updatePassword: (newPassword: string) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -96,6 +97,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return error ? { error: error.message } : {};
   };
 
+  const signInWithAppleToken: AuthValue['signInWithAppleToken'] = async (idToken, fullName) => {
+    const { data, error } = await supabase.auth.signInWithIdToken({ provider: 'apple', token: idToken });
+    if (error) return { error: error.message };
+    // Apple returns the name only on the first authorization — persist it if the
+    // profile has none yet, so the user isn't nameless.
+    const name = fullName?.trim();
+    if (name && data.user) {
+      const { data: prof } = await supabase.from('profiles').select('name').eq('id', data.user.id).maybeSingle();
+      if (!prof?.name) await supabase.from('profiles').update({ name }).eq('id', data.user.id);
+    }
+    return {};
+  };
+
   const signOut = async () => {
     const { error } = await supabase.auth.signOut();
     if (!error) {
@@ -115,6 +129,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signIn,
       signUp,
       signInWithGoogleToken,
+      signInWithAppleToken,
       updatePassword,
       signOut,
       refreshProfile,

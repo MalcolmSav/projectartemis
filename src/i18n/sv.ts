@@ -150,7 +150,7 @@ export const sv: Record<string, string> = {
   'EMERGENCY CONTACTS': 'NÖDKONTAKTER',
   'MY UPCOMING': 'MINA KOMMANDE',
   APPEARANCE: 'UTSEENDE',
-  LANGUAGE: 'SPRÅK',
+  Language: 'Språk',
   Mode: 'Läge',
   Day: 'Dag',
   Night: 'Natt',

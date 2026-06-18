@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, TextInput, Pressable, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as Google from 'expo-auth-session/providers/google';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { Text, Eyebrow, PillButton } from '../components';
 import { ArtemisMark, GoogleLogo } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
@@ -14,8 +15,15 @@ type Mode = 'signIn' | 'signUp';
 
 export function AuthScreen() {
   const t = useTheme();
-  const { signIn, signUp, signInWithGoogleToken } = useAuth();
+  const { signIn, signUp, signInWithGoogleToken, signInWithAppleToken } = useAuth();
   const [mode, setMode] = useState<Mode>('signIn');
+  const [appleAvailable, setAppleAvailable] = useState(false);
+
+  useEffect(() => {
+    if (Platform.OS === 'ios') {
+      AppleAuthentication.isAvailableAsync().then(setAppleAvailable).catch(() => setAppleAvailable(false));
+    }
+  }, []);
   const [username, setUsername] = useState('');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -65,6 +73,33 @@ export function AuthScreen() {
       }
     } else {
       promptGoogleAsync();
+    }
+  };
+
+  const handleApplePress = async () => {
+    setErr(null);
+    try {
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+      if (!credential.identityToken) {
+        setErr('Apple sign-in failed — no token returned.');
+        return;
+      }
+      const fullName = credential.fullName
+        ? [credential.fullName.givenName, credential.fullName.familyName].filter(Boolean).join(' ')
+        : null;
+      setBusy(true);
+      const res = await signInWithAppleToken(credential.identityToken, fullName);
+      setBusy(false);
+      if (res.error) setErr(res.error);
+    } catch (e: any) {
+      // User cancel throws ERR_REQUEST_CANCELED — ignore quietly.
+      if (e?.code !== 'ERR_REQUEST_CANCELED') setErr('Apple sign-in was cancelled or failed.');
+      setBusy(false);
     }
   };
 
@@ -159,10 +194,24 @@ export function AuthScreen() {
           disabled={busy}
           iconLeft={<GoogleLogo size={18} />}
           onPress={handleGooglePress}
-          style={{ marginBottom: 20 }}
+          style={{ marginBottom: 12 }}
         >
           Continue with Google
         </PillButton>
+
+        {appleAvailable && (
+          <AppleAuthentication.AppleAuthenticationButton
+            buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+            buttonStyle={
+              t.mode === 'night'
+                ? AppleAuthentication.AppleAuthenticationButtonStyle.WHITE
+                : AppleAuthentication.AppleAuthenticationButtonStyle.BLACK
+            }
+            cornerRadius={999}
+            style={{ height: 52, marginBottom: 20 }}
+            onPress={handleApplePress}
+          />
+        )}
 
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20, gap: 10 }}>
           <View style={{ flex: 1, height: 1, backgroundColor: t.colors.hairline }} />
