@@ -16,6 +16,7 @@ import { Text } from '../components';
 import { IconPhone } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
 import { useAppState } from '../state/AppState';
+import { useT } from '../i18n';
 import { palette } from '../theme/tokens';
 import { RootStackParamList } from '../navigation/types';
 
@@ -23,10 +24,12 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export function FakeCallIncomingScreen() {
   const t = useTheme();
+  const tr = useT();
   const nav = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const { fakeCallCallerName } = useAppState();
-  const initial = fakeCallCallerName.trim().charAt(0).toUpperCase() || '?';
+  const callerName = fakeCallCallerName.trim() || tr('Mom');
+  const initial = callerName.charAt(0).toUpperCase() || '?';
 
   // Subtle pulse on the avatar ring like iOS
   const pulse = useSharedValue(1);
@@ -82,7 +85,7 @@ export function FakeCallIncomingScreen() {
             marginBottom: 20,
           }}
         >
-          incoming call · mobil
+          {tr('incoming call · mobil')}
         </Text>
 
         {/* Avatar with pulse ring */}
@@ -140,7 +143,7 @@ export function FakeCallIncomingScreen() {
             paddingHorizontal: 24,
           }}
         >
-          {fakeCallCallerName}
+          {callerName}
         </Text>
       </View>
 
@@ -170,7 +173,7 @@ export function FakeCallIncomingScreen() {
             </View>
           </Pressable>
           <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, fontFamily: t.type.body }}>
-            Decline
+            {tr('Decline')}
           </Text>
         </View>
 
@@ -190,7 +193,7 @@ export function FakeCallIncomingScreen() {
             <IconPhone size={28} color="#fff" />
           </Pressable>
           <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, fontFamily: t.type.body }}>
-            Accept
+            {tr('Accept')}
           </Text>
         </View>
       </View>

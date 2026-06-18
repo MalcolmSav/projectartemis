@@ -7,6 +7,7 @@ import { Text, Eyebrow, Card, PillButton } from '../components';
 import { IconChevron } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
 import { useAppState } from '../state/AppState';
+import { useT } from '../i18n';
 import { palette } from '../theme/tokens';
 import { RootStackParamList } from '../navigation/types';
 
@@ -21,9 +22,11 @@ const TIMINGS = [
 
 export function FakeCallSetupScreen() {
   const t = useTheme();
+  const tr = useT();
   const nav = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const { fakeCallScheduledAt, fakeCallCallerName, setFakeCallCallerName, scheduleFakeCall, cancelFakeCallSchedule } = useAppState();
+  const callerDisplay = fakeCallCallerName.trim() || tr('Mom');
   const [chosen, setChosen] = useState(30);
   const [now, setNow] = useState(Date.now());
 
@@ -51,26 +54,26 @@ export function FakeCallSetupScreen() {
           <IconChevron dir="left" color={t.colors.inkSoft} />
         </Pressable>
         <Text variant="large" weight="semibold">
-          Fake call
+          {tr('Fake call')}
         </Text>
       </View>
       <ScrollView contentContainerStyle={{ paddingHorizontal: t.spacing.pageH, paddingBottom: insets.bottom + 40 }} keyboardShouldPersistTaps="handled">
         <Card style={{ marginBottom: 18, alignItems: 'center', paddingVertical: 28 }}>
           <Text style={{ fontSize: 56, lineHeight: 68, marginBottom: 8 }}>📞</Text>
-          <Eyebrow>CALLER · {fakeCallCallerName.toUpperCase()}</Eyebrow>
+          <Eyebrow>{tr('CALLER · {name}', { name: callerDisplay.toUpperCase() })}</Eyebrow>
           <Text style={{ fontFamily: t.type.display, fontSize: 44, lineHeight: 56, marginTop: 8 }}>
             {remaining != null ? `${remaining}s` : `${chosen}s`}
           </Text>
           <Text variant="small" color={t.colors.inkSoft} style={{ marginTop: 6, textAlign: 'center' }}>
-            Schedules an incoming call so you can leave any situation.
+            {tr('Schedules an incoming call so you can leave any situation.')}
           </Text>
         </Card>
 
-        <Eyebrow style={{ marginBottom: 8 }}>CALLER NAME</Eyebrow>
+        <Eyebrow style={{ marginBottom: 8 }}>{tr('CALLER NAME')}</Eyebrow>
         <TextInput
           value={fakeCallCallerName}
           onChangeText={setFakeCallCallerName}
-          placeholder="Mamma"
+          placeholder={tr('Mom')}
           placeholderTextColor={t.colors.inkMute}
           style={{
             backgroundColor: t.colors.parchment,
@@ -82,7 +85,7 @@ export function FakeCallSetupScreen() {
           }}
         />
 
-        <Eyebrow style={{ marginBottom: 8 }}>WHEN</Eyebrow>
+        <Eyebrow style={{ marginBottom: 8 }}>{tr('WHEN')}</Eyebrow>
         <View style={{ flexDirection: 'row', gap: 6, marginBottom: 22, flexWrap: 'wrap' }}>
           {TIMINGS.map((tt) => {
             const active = chosen === tt.sec;
@@ -113,14 +116,14 @@ export function FakeCallSetupScreen() {
               scheduleFakeCall(chosen);
             }}
           >
-            Schedule fake call
+            {tr('Schedule fake call')}
           </PillButton>
           <PillButton variant="secondary" size="lg" block onPress={() => scheduleFakeCall(2)}>
-            Call me right now (2s)
+            {tr('Call me right now (2s)')}
           </PillButton>
           {fakeCallScheduledAt && (
             <PillButton variant="ghost" block onPress={cancelFakeCallSchedule}>
-              Cancel scheduled call
+              {tr('Cancel scheduled call')}
             </PillButton>
           )}
         </View>

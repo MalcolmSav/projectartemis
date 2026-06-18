@@ -7,12 +7,15 @@ import { useAuth } from '../state/Auth';
 import { useEvents } from '../hooks/useEvents';
 import { useEmergencyContacts } from '../hooks/useEmergencyContacts';
 import { useHomePlace } from '../hooks/useHomePlace';
+import { useT, useLang } from '../i18n';
 import { supabase } from '../lib/supabase';
 import { pickAndUploadAvatar } from '../lib/avatar';
 import { palette } from '../theme/tokens';
 
 export function ProfileScreen() {
   const t = useTheme();
+  const tr = useT();
+  const { lang, setLang } = useLang();
   const { profile, signOut, refreshProfile } = useAuth();
   const { events } = useEvents();
   const { contacts } = useEmergencyContacts(profile?.id);
@@ -24,7 +27,7 @@ export function ProfileScreen() {
     setHomeBusy(true);
     const res = await setFromCurrentLocation();
     setHomeBusy(false);
-    if (res.error) Alert.alert('Could not set home', res.error);
+    if (res.error) Alert.alert(tr('Could not set home'), res.error);
   };
 
   const display = profile?.name?.trim() || profile?.email?.split('@')[0] || '—';
@@ -47,7 +50,7 @@ export function ProfileScreen() {
             <Avatar name={display} size={92} ring photoUri={profile?.avatar_url ?? undefined} />
           </Pressable>
           <Text variant="small" weight="semibold" color={t.colors.gold700} style={{ marginTop: 12 }}>
-            {uploading ? 'Uploading…' : profile?.avatar_url ? 'Change photo' : 'Add photo'}
+            {uploading ? tr('Uploading…') : profile?.avatar_url ? tr('Change photo') : tr('Add photo')}
           </Text>
           <Text
             style={{
@@ -72,17 +75,17 @@ export function ProfileScreen() {
           </Text>
           <Pressable onPress={() => setEditOpen(true)} style={{ marginTop: 10 }}>
             <Text variant="small" weight="semibold" color={t.colors.gold700}>
-              Edit profile
+              {tr('Edit profile')}
             </Text>
           </Pressable>
         </View>
 
-        <Eyebrow style={{ marginBottom: 8 }}>ACCOUNT</Eyebrow>
+        <Eyebrow style={{ marginBottom: 8 }}>{tr('ACCOUNT')}</Eyebrow>
         <Card style={{ marginBottom: 18 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <View>
               <Text variant="meta" color={t.colors.inkMute}>
-                EMAIL
+                {tr('EMAIL')}
               </Text>
               <Text variant="body">{profile?.email}</Text>
             </View>
@@ -92,7 +95,7 @@ export function ProfileScreen() {
               <Divider style={{ marginVertical: 10 }} />
               <View>
                 <Text variant="meta" color={t.colors.inkMute}>
-                  PHONE
+                  {tr('PHONE')}
                 </Text>
                 <Text variant="body">{profile.phone}</Text>
               </View>
@@ -100,10 +103,10 @@ export function ProfileScreen() {
           ) : null}
         </Card>
 
-        <Eyebrow style={{ marginBottom: 8 }}>HOME · AUTO CHECK-IN</Eyebrow>
+        <Eyebrow style={{ marginBottom: 8 }}>{tr('HOME · AUTO CHECK-IN')}</Eyebrow>
         <Card style={{ marginBottom: 18 }}>
           <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 10 }}>
-            When a trip reaches your home, Artemis marks you arrived safe automatically — no tapping needed.
+            {tr('When a trip reaches your home, Artemis marks you arrived safe automatically — no tapping needed.')}
           </Text>
           {home ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
@@ -115,25 +118,25 @@ export function ProfileScreen() {
               </View>
               <Pressable onPress={onSetHome} disabled={homeBusy} hitSlop={8}>
                 <Text variant="small" weight="semibold" color={t.colors.gold700}>
-                  {homeBusy ? 'Updating…' : 'Update'}
+                  {homeBusy ? tr('Updating…') : tr('Update')}
                 </Text>
               </Pressable>
               <Pressable onPress={clearHome} hitSlop={8}>
                 <Text variant="small" weight="semibold" color={t.colors.crimson}>
-                  Clear
+                  {tr('Clear')}
                 </Text>
               </Pressable>
             </View>
           ) : (
             <PillButton variant="secondary" block disabled={homeBusy} onPress={onSetHome}>
-              {homeBusy ? 'Getting location…' : 'Set home to my current location'}
+              {homeBusy ? tr('Getting location…') : tr('Set home to my current location')}
             </PillButton>
           )}
         </Card>
 
         {contacts.length > 0 && (
           <>
-            <Eyebrow style={{ marginBottom: 8 }}>EMERGENCY CONTACTS</Eyebrow>
+            <Eyebrow style={{ marginBottom: 8 }}>{tr('EMERGENCY CONTACTS')}</Eyebrow>
             <Card style={{ marginBottom: 18 }}>
               {contacts.map((contact, i) => (
                 <View key={contact.id}>
@@ -159,7 +162,7 @@ export function ProfileScreen() {
 
         {events.length > 0 && (
           <>
-            <Eyebrow style={{ marginBottom: 8 }}>MY UPCOMING</Eyebrow>
+            <Eyebrow style={{ marginBottom: 8 }}>{tr('MY UPCOMING')}</Eyebrow>
             <Card style={{ marginBottom: 18 }}>
               {events.slice(0, 3).map((e, i) => (
                 <View key={e.id}>
@@ -183,10 +186,10 @@ export function ProfileScreen() {
           </>
         )}
 
-        <Eyebrow style={{ marginBottom: 8 }}>APPEARANCE</Eyebrow>
+        <Eyebrow style={{ marginBottom: 8 }}>{tr('APPEARANCE')}</Eyebrow>
         <Card style={{ marginBottom: 18 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Text variant="body">Mode</Text>
+            <Text variant="body">{tr('Mode')}</Text>
             <View style={{ flexDirection: 'row', backgroundColor: t.colors.moonlight, borderRadius: 999, padding: 3 }}>
               {(['light', 'night'] as const).map((m) => {
                 const active = t.mode === m;
@@ -202,7 +205,34 @@ export function ProfileScreen() {
                     }}
                   >
                     <Text variant="small" weight="semibold" color={active ? palette.gold300 : t.colors.inkSoft}>
-                      {m === 'light' ? 'Day' : 'Night'}
+                      {m === 'light' ? tr('Day') : tr('Night')}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+          <Divider style={{ marginVertical: 12 }} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text variant="body">{tr('LANGUAGE')}</Text>
+            <View style={{ flexDirection: 'row', backgroundColor: t.colors.moonlight, borderRadius: 999, padding: 3 }}>
+              {(['en', 'sv'] as const).map((l) => {
+                const active = lang === l;
+                return (
+                  <Pressable
+                    key={l}
+                    onPress={() => setLang(l)}
+                    accessibilityRole="button"
+                    accessibilityLabel={l === 'en' ? 'English' : 'Svenska'}
+                    style={{
+                      paddingVertical: 6,
+                      paddingHorizontal: 14,
+                      borderRadius: 999,
+                      backgroundColor: active ? t.colors.forest700 : 'transparent',
+                    }}
+                  >
+                    <Text variant="small" weight="semibold" color={active ? palette.gold300 : t.colors.inkSoft}>
+                      {l === 'en' ? 'English' : 'Svenska'}
                     </Text>
                   </Pressable>
                 );
@@ -215,13 +245,13 @@ export function ProfileScreen() {
           variant="secondary"
           block
           onPress={() => {
-            Alert.alert('Sign out?', 'You can sign back in anytime.', [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Sign out', style: 'destructive', onPress: () => signOut() },
+            Alert.alert(tr('Sign out?'), tr('You can sign back in anytime.'), [
+              { text: tr('Cancel'), style: 'cancel' },
+              { text: tr('Sign out'), style: 'destructive', onPress: () => signOut() },
             ]);
           }}
         >
-          Sign out
+          {tr('Sign out')}
         </PillButton>
 
         <PillButton
@@ -230,23 +260,23 @@ export function ProfileScreen() {
           style={{ marginTop: 8 }}
           onPress={() => {
             Alert.alert(
-              'Delete account?',
-              'This permanently removes your profile, circle, events and check-ins. This cannot be undone.',
+              tr('Delete account?'),
+              tr('This permanently removes your profile, circle, events and check-ins. This cannot be undone.'),
               [
-                { text: 'Cancel', style: 'cancel' },
+                { text: tr('Cancel'), style: 'cancel' },
                 {
-                  text: 'Delete',
+                  text: tr('Delete'),
                   style: 'destructive',
                   onPress: async () => {
                     try {
                       const { error } = await supabase.rpc('delete_my_account');
                       if (error) {
-                        Alert.alert('Delete failed', error.message);
+                        Alert.alert(tr('Delete failed'), error.message);
                         return;
                       }
                       await signOut();
                     } catch (err: any) {
-                      Alert.alert('Delete failed', err?.message ?? String(err));
+                      Alert.alert(tr('Delete failed'), err?.message ?? String(err));
                     }
                   },
                 },
@@ -255,14 +285,14 @@ export function ProfileScreen() {
           }}
         >
           <Text variant="small" weight="semibold" color={t.colors.crimson}>
-            Delete account
+            {tr('Delete account')}
           </Text>
         </PillButton>
 
         <View style={{ alignItems: 'center', opacity: 0.4, marginTop: 24 }}>
           <ArtemisMark size={36} moonColor={t.colors.forest700} />
           <Text style={{ fontFamily: t.type.displayItalic, fontSize: 12, marginTop: 6, color: t.colors.inkMute }}>
-            Artemis · she who watches
+            {tr('Artemis · she who watches')}
           </Text>
         </View>
       </ScrollView>
@@ -281,6 +311,7 @@ export function ProfileScreen() {
 
 function EditProfileSheet({ open, onClose, onSaved }: { open: boolean; onClose: () => void; onSaved: () => void }) {
   const t = useTheme();
+  const tr = useT();
   const { profile } = useAuth();
   const [name, setName] = useState(profile?.name ?? '');
   const [phone, setPhone] = useState(profile?.phone ?? '');
@@ -300,7 +331,7 @@ function EditProfileSheet({ open, onClose, onSaved }: { open: boolean; onClose: 
   const save = async () => {
     if (!profile) return;
     if (!name.trim()) {
-      setErr('Name is required');
+      setErr(tr('Name is required'));
       return;
     }
     setBusy(true);
@@ -324,10 +355,10 @@ function EditProfileSheet({ open, onClose, onSaved }: { open: boolean; onClose: 
 
   return (
     <BottomSheet visible={open} onClose={onClose}>
-      <Text style={{ fontFamily: t.type.display, fontSize: 24, marginBottom: 16 }}>Edit profile</Text>
-      <Eyebrow style={{ marginBottom: 6 }}>NAME</Eyebrow>
+      <Text style={{ fontFamily: t.type.display, fontSize: 24, marginBottom: 16 }}>{tr('Edit profile')}</Text>
+      <Eyebrow style={{ marginBottom: 6 }}>{tr('NAME')}</Eyebrow>
       <TextInput value={name} onChangeText={setName} style={inputStyle} placeholderTextColor={t.colors.inkMute} />
-      <Eyebrow style={{ marginBottom: 6 }}>PHONE</Eyebrow>
+      <Eyebrow style={{ marginBottom: 6 }}>{tr('PHONE')}</Eyebrow>
       <TextInput
         value={phone}
         onChangeText={setPhone}
@@ -335,7 +366,7 @@ function EditProfileSheet({ open, onClose, onSaved }: { open: boolean; onClose: 
         style={inputStyle}
         placeholderTextColor={t.colors.inkMute}
       />
-      <Eyebrow style={{ marginBottom: 6 }}>BIO</Eyebrow>
+      <Eyebrow style={{ marginBottom: 6 }}>{tr('BIO')}</Eyebrow>
       <TextInput
         value={bio}
         onChangeText={setBio}
@@ -350,10 +381,10 @@ function EditProfileSheet({ open, onClose, onSaved }: { open: boolean; onClose: 
       )}
       <View style={{ flexDirection: 'row', gap: 8 }}>
         <PillButton variant="ghost" style={{ flex: 1 }} onPress={onClose}>
-          Cancel
+          {tr('Cancel')}
         </PillButton>
         <PillButton style={{ flex: 1 }} onPress={save} disabled={busy || !name.trim()}>
-          {busy ? 'Saving…' : 'Save'}
+          {busy ? tr('Saving…') : tr('Save')}
         </PillButton>
       </View>
     </BottomSheet>

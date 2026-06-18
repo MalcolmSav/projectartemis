@@ -73,7 +73,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [trip, setTrip] = useState<TripState | null>(null);
   const [fakeCallScheduledAt, setFakeCallScheduledAt] = useState<number | null>(null);
   const [fakeCallActive, setFakeCallActive] = useState(false);
-  const [fakeCallCallerName, setFakeCallCallerName] = useState('Mamma');
+  // Empty by default — screens fall back to a locale-aware default (Mom / Mamma).
+  const [fakeCallCallerName, setFakeCallCallerName] = useState('');
   const handleSetSharing = useCallback((b: boolean) => {
     setSharing(b);
     if (b) setShareStartedAt(Date.now());

@@ -7,6 +7,7 @@ import { Text } from '../components';
 import { IconPhone } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
 import { useAppState } from '../state/AppState';
+import { useT } from '../i18n';
 import { palette } from '../theme/tokens';
 import Svg, { Path, Line } from 'react-native-svg';
 
@@ -44,10 +45,12 @@ function IconSpeaker({ on, size = 24 }: { on: boolean; size?: number }) {
 
 export function FakeCallOnCallScreen() {
   const t = useTheme();
+  const tr = useT();
   const nav = useNavigation();
   const insets = useSafeAreaInsets();
   const { fakeCallCallerName } = useAppState();
-  const initial = fakeCallCallerName.trim().charAt(0).toUpperCase() || '?';
+  const callerName = fakeCallCallerName.trim() || tr('Mom');
+  const initial = callerName.charAt(0).toUpperCase() || '?';
   const [secs, setSecs] = useState(0);
   const [muted, setMuted] = useState(false);
   const [speaker, setSpeaker] = useState(false);
@@ -112,7 +115,7 @@ export function FakeCallOnCallScreen() {
             marginBottom: 32,
           }}
         >
-          {fakeCallCallerName}
+          {callerName}
         </Text>
 
         <LinearGradient
@@ -153,8 +156,8 @@ export function FakeCallOnCallScreen() {
             gap: 56,
           }}
         >
-          {controlBtn(() => setMuted((m) => !m), muted, <IconMic muted={muted} size={22} />, muted ? 'Unmute' : 'Mute')}
-          {controlBtn(() => setSpeaker((s) => !s), speaker, <IconSpeaker on={speaker} size={22} />, speaker ? 'Speaker on' : 'Speaker')}
+          {controlBtn(() => setMuted((m) => !m), muted, <IconMic muted={muted} size={22} />, muted ? tr('Unmute') : tr('Mute'))}
+          {controlBtn(() => setSpeaker((s) => !s), speaker, <IconSpeaker on={speaker} size={22} />, speaker ? tr('Speaker on') : tr('Speaker'))}
         </View>
 
         {/* End call button */}
@@ -175,7 +178,7 @@ export function FakeCallOnCallScreen() {
             </View>
           </Pressable>
           <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, fontFamily: t.type.body }}>
-            End
+            {tr('End')}
           </Text>
         </View>
       </View>
