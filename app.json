@@ -2,7 +2,7 @@
   "expo": {
     "name": "Artemis",
     "slug": "artemis",
-    "version": "0.1.0",
+    "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -12,6 +12,7 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.artemis.app",
       "icon": "./assets/icon-1024.png",
+      "usesAppleSignIn": true,
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Artemis shares your live location with your safety circle while you choose to, and shows nearby community safety reports.",
         "ITSAppUsesNonExemptEncryption": false
@@ -60,6 +61,7 @@
           "color": "#C9973A"
         }
       ],
+      "expo-apple-authentication",
       "expo-web-browser"
     ]
   }

@@ -42,6 +42,7 @@ import { useCheckIns } from '../hooks/useCheckIns';
 import { useSafetyTimer } from '../hooks/useSafetyTimer';
 import { useFollowedTrips } from '../hooks/useFollowedTrips';
 import { useT } from '../i18n';
+import { personName } from '../lib/person';
 import { useConversations } from '../hooks/useConversations';
 import { usePresence } from '../hooks/usePresence';
 import { useAuth } from '../state/Auth';
@@ -492,7 +493,7 @@ export function HomeScreen() {
                   photoUri={m.profile.avatar_url}
                   person={{
                     id: m.profile.id,
-                    name: m.profile.name ?? m.profile.email,
+                    name: personName(m.profile),
                     relation: m.relation ?? 'Friend',
                     lastSeen: lastSeenText,
                     lastLocation: '—',
@@ -886,7 +887,7 @@ function NotificationsSheet({
               <Eyebrow style={{ marginTop: 6, marginBottom: 2 }}>CHECKS YOU SENT</Eyebrow>
               {sentChecks.map((sc) => {
                 const st = statusFor(sc.status);
-                const name = sc.to?.name ?? sc.to?.email ?? 'Someone';
+                const name = personName(sc.to);
                 return (
                   <View
                     key={sc.id}
@@ -1092,13 +1093,13 @@ function FriendPickerSheet({
             }}
           >
             <Avatar
-              name={m.profile.name ?? m.profile.email}
+              name={personName(m.profile)}
               size={44}
               photoUri={m.profile.avatar_url ?? undefined}
             />
             <View style={{ flex: 1 }}>
               <Text variant="body" weight="semibold">
-                {m.profile.name ?? m.profile.email}
+                {personName(m.profile)}
               </Text>
               {m.relation && (
                 <Eyebrow color={t.colors.gold700} style={{ marginTop: 2 }}>

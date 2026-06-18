@@ -70,7 +70,8 @@ export function CirclePersonScreen() {
     );
   }
 
-  const displayName = profile.name ?? profile.email;
+  // Never fall back to email here — a circle member's email stays private.
+  const displayName = profile.name ?? (profile.username ? `@${profile.username}` : 'Circle member');
 
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.ivoryBg }}>
@@ -144,17 +145,13 @@ export function CirclePersonScreen() {
           </PillButton>
         </View>
 
-        <Card>
-          <Row label="Email" value={profile.email} />
-          <Divider />
-          {profile.phone ? (
-            <>
-              <Row label="Phone" value={profile.phone} />
-              <Divider />
-            </>
-          ) : null}
-          {profile.bio ? <Row label="Bio" value={profile.bio} /> : null}
-        </Card>
+        {(profile.phone || profile.bio) && (
+          <Card>
+            {profile.phone ? <Row label="Phone" value={profile.phone} /> : null}
+            {profile.phone && profile.bio ? <Divider /> : null}
+            {profile.bio ? <Row label="Bio" value={profile.bio} /> : null}
+          </Card>
+        )}
 
         {emergencyContacts.length > 0 && (
           <>
