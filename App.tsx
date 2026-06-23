@@ -92,19 +92,21 @@ function GatedApp() {
 }
 
 export default function App() {
-  const [fr] = useFraunces({
+  const [fr, frError] = useFraunces({
     Fraunces_400Regular_Italic,
     Fraunces_500Medium,
     Fraunces_600SemiBold,
     Fraunces_700Bold,
   });
-  const [dm] = useDMSans({
+  const [dm, dmError] = useDMSans({
     DMSans_400Regular,
     DMSans_500Medium,
     DMSans_700Bold,
   });
 
-  const ready = fr && dm;
+  // Hide splash once fonts are done — whether they succeeded or failed.
+  // Without the error check the splash hangs forever if fonts don't load.
+  const ready = (fr || !!frError) && (dm || !!dmError);
 
   useEffect(() => {
     if (ready) SplashScreen.hideAsync().catch(() => {});
