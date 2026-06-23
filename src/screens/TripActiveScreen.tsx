@@ -15,6 +15,7 @@ import { useHomePlace } from '../hooks/useHomePlace';
 import { useAuth } from '../state/Auth';
 import { supabase } from '../lib/supabase';
 import { palette } from '../theme/tokens';
+import { personName } from '../lib/person';
 import { RootStackParamList } from '../navigation/types';
 
 // Grace period after ETA before the buddy/circle is auto-alerted.
@@ -344,13 +345,13 @@ export function TripActiveScreen() {
             <Eyebrow>BUDDY</Eyebrow>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 8 }}>
               <Avatar
-                name={buddy.profile.name ?? buddy.profile.email}
+                name={personName(buddy.profile)}
                 size={44}
                 photoUri={buddy.profile.avatar_url ?? undefined}
               />
               <View style={{ flex: 1 }}>
                 <Text variant="body" weight="semibold">
-                  {buddy.profile.name ?? buddy.profile.email}
+                  {personName(buddy.profile)}
                 </Text>
                 <Text variant="meta" color={t.colors.inkMute}>
                   {buddy.relation ?? 'Friend'} · notified if you miss ETA
@@ -362,7 +363,7 @@ export function TripActiveScreen() {
 
         <View style={{ backgroundColor: t.colors.gold100, padding: 14, borderRadius: t.radii.md, marginBottom: 22 }}>
           <Text variant="small" color={t.colors.inkSoft}>
-            🌙 You'll get a check-in at {activeTrip.eta ?? 'ETA'}. If you don't respond within 5 minutes, {buddy?.profile.name ?? 'your buddy'} sees your live location.
+            🌙 You'll get a check-in at {activeTrip.eta ?? 'ETA'}. If you don't respond within 5 minutes, {buddy ? personName(buddy.profile) : 'your buddy'} sees your live location.
           </Text>
         </View>
 

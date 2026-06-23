@@ -13,6 +13,7 @@ import { useCircle } from '../hooks/useCircle';
 import { usePresence } from '../hooks/usePresence';
 import { ReportKind } from '../data/demo';
 import { palette } from '../theme/tokens';
+import { personName } from '../lib/person';
 
 const REPORT_HEX: Record<ReportKind, string> = {
   yellow: '#D4A933',
@@ -103,7 +104,7 @@ export function MapScreen() {
         const stale = Date.now() - new Date(p.updated_at).getTime() > 5 * 60_000;
         return {
           id: m.profile.id,
-          name: m.profile.name ?? m.profile.email,
+          name: personName(m.profile),
           avatar: m.profile.avatar_url,
           lat: p.lat,
           lng: p.lng,

@@ -5,6 +5,7 @@ import { useTheme } from '../theme/ThemeProvider';
 import { useAuth } from '../state/Auth';
 import { useCircle } from '../hooks/useCircle';
 import { supabase, Profile } from '../lib/supabase';
+import { personName } from '../lib/person';
 
 export function OnboardingCircleStep({ onComplete }: { onComplete: () => void }) {
   const t = useTheme();
@@ -173,13 +174,13 @@ export function OnboardingCircleStep({ onComplete }: { onComplete: () => void })
                 <View key={item.profile.id}>
                   <View style={{ flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 8 }}>
                     <Avatar 
-                      name={item.profile.name || item.profile.email} 
+                      name={personName(item.profile)} 
                       size={40} 
                       photoUri={item.profile.avatar_url ?? undefined} 
                     />
                     <View style={{ flex: 1, marginLeft: 12 }}>
                       <Text variant="body" weight="semibold">
-                        {item.profile.name || item.profile.email}
+                        {personName(item.profile)}
                       </Text>
                       {item.profile.username && (
                         <Text variant="small" color={t.colors.inkMute}>

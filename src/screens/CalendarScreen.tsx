@@ -8,6 +8,7 @@ import { useCircle } from '../hooks/useCircle';
 import { useAuth } from '../state/Auth';
 import { supabase } from '../lib/supabase';
 import { palette } from '../theme/tokens';
+import { personName } from '../lib/person';
 
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 const MONTHS_LONG = [
@@ -560,13 +561,13 @@ function CalendarShareSheet({ open, onClose }: { open: boolean; onClose: () => v
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 }}>
                   <Avatar
-                    name={m.profile.name ?? m.profile.email}
+                    name={personName(m.profile)}
                     size={40}
                     photoUri={m.profile.avatar_url ?? undefined}
                   />
                   <View style={{ flex: 1 }}>
                     <Text variant="body" weight="semibold">
-                      {m.profile.name ?? m.profile.email}
+                      {personName(m.profile)}
                     </Text>
                     <Eyebrow color={t.colors.inkMute}>{m.relation ?? 'Friend'}</Eyebrow>
                   </View>

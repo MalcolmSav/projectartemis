@@ -10,6 +10,7 @@ import { useTrips } from '../hooks/useTrips';
 import { useAuth } from '../state/Auth';
 import { supabase } from '../lib/supabase';
 import { palette } from '../theme/tokens';
+import { personName } from '../lib/person';
 import { RootStackParamList } from '../navigation/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -167,13 +168,13 @@ export function TripSetupScreen() {
                   }}
                 >
                   <Avatar
-                    name={p.profile.name ?? p.profile.email}
+                    name={personName(p.profile)}
                     size={40}
                     photoUri={p.profile.avatar_url ?? undefined}
                   />
                   <View style={{ flex: 1 }}>
                     <Text variant="body" weight="semibold" color={active ? palette.gold300 : t.colors.ink}>
-                      {p.profile.name ?? p.profile.email}
+                      {personName(p.profile)}
                     </Text>
                     <Text variant="meta" color={active ? 'rgba(242,226,187,0.7)' : t.colors.inkMute}>
                       {p.relation ?? 'Friend'}

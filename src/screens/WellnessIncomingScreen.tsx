@@ -14,6 +14,7 @@ import { Text, Eyebrow, PillButton } from '../components';
 import { IconChevron } from '../components/icons';
 import { palette } from '../theme/tokens';
 import { useCheckIns } from '../hooks/useCheckIns';
+import { useT } from '../i18n';
 import { RootStackParamList } from '../navigation/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -22,6 +23,7 @@ const COUNTDOWN_MS = 30_000;
 
 export function WellnessIncomingScreen() {
   const t = useTheme();
+  const tr = useT();
   const nav = useNavigation<Nav>();
   const route = useRoute<RouteProp<RootStackParamList, 'WellnessIncoming'>>();
   const fromName = route.params?.fromName ?? 'Someone';
@@ -85,15 +87,15 @@ export function WellnessIncomingScreen() {
           </Text>
         </LinearGradient>
 
-        <Eyebrow style={{ marginBottom: 8 }}>WELLNESS CHECK 🏹</Eyebrow>
+        <Eyebrow style={{ marginBottom: 8 }}>{tr('WELLNESS CHECK 🏹')}</Eyebrow>
         <Text variant="displayH1" style={{ textAlign: 'center', marginBottom: 8 }}>
           <Text variant="displayH1" italic accent>
             {fromName}
           </Text>{' '}
-          is checking in on you.
+          {tr('is checking in on you.')}
         </Text>
         <Text variant="small" color={t.colors.inkSoft} style={{ textAlign: 'center', marginBottom: 24 }}>
-          Tap a response before the timer runs out.
+          {tr('Tap a response before the timer runs out.')}
         </Text>
 
         <View
@@ -117,7 +119,7 @@ export function WellnessIncomingScreen() {
           disabled={busy}
           onPress={() => respond('ok', 'All good')}
         >
-          ✅  All good!
+          {tr('✅  All good!')}
         </PillButton>
         <PillButton
           variant="secondary"
@@ -127,7 +129,7 @@ export function WellnessIncomingScreen() {
           onPress={() => respond('wellness_response', `need_help`)}
           style={{ backgroundColor: t.colors.gold100 }}
         >
-          ⚠️  I need help · let {fromName} know
+          {tr('⚠️  I need help · let {name} know', { name: fromName })}
         </PillButton>
         <PillButton
           variant="danger"
@@ -136,7 +138,7 @@ export function WellnessIncomingScreen() {
           disabled={busy}
           onPress={() => respond('alarm', 'Alarm from wellness check')}
         >
-          🚨  ALARM · alert entire circle
+          {tr('🚨  ALARM · alert entire circle')}
         </PillButton>
       </View>
     </View>
