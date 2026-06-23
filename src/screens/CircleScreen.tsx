@@ -19,7 +19,6 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 export function CircleScreen() {
   const t = useTheme();
   const nav = useNavigation<Nav>();
-  const { signOut } = useAuth();
   const { members, pendingInvites, loading, error, invite, accept, decline, remove, refresh } = useCircle();
   const [refreshing, setRefreshing] = useState(false);
   const onPullRefresh = async () => {
@@ -64,30 +63,17 @@ export function CircleScreen() {
     <View style={{ flex: 1, backgroundColor: t.colors.ivoryBg }}>
       <TopBar
         right={
-          <>
-            <Pressable
-              onPress={signOut}
-              style={[
-                { paddingHorizontal: 12, height: 40, borderRadius: 999, backgroundColor: t.colors.parchment, alignItems: 'center', justifyContent: 'center' },
-                t.shadows.soft,
-              ]}
-            >
-              <Text variant="small" color={t.colors.inkSoft} weight="semibold">
-                Sign out
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setAddOpen(true)}
-              accessibilityRole="button"
-              accessibilityLabel="Add someone to your circle"
-              style={[
-                { width: 40, height: 40, borderRadius: 999, backgroundColor: t.colors.parchment, alignItems: 'center', justifyContent: 'center' },
-                t.shadows.soft,
-              ]}
-            >
-              <IconPlus color={t.colors.inkSoft} />
-            </Pressable>
-          </>
+          <Pressable
+            onPress={() => setAddOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Add someone to your circle"
+            style={[
+              { width: 40, height: 40, borderRadius: 999, backgroundColor: t.colors.parchment, alignItems: 'center', justifyContent: 'center' },
+              t.shadows.soft,
+            ]}
+          >
+            <IconPlus color={t.colors.inkSoft} />
+          </Pressable>
         }
       />
       <ScrollView
