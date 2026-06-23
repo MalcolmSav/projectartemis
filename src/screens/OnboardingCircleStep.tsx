@@ -67,7 +67,6 @@ export function OnboardingCircleStep({ onComplete }: { onComplete: () => void })
       for (const { profile: person, relation } of selectedPeople) {
         const result = await invite(person.email, relation);
         if (result.error) {
-          console.error('Invite error:', result.error);
           // Continue anyway, don't fail the whole step
         }
       }
@@ -75,8 +74,7 @@ export function OnboardingCircleStep({ onComplete }: { onComplete: () => void })
       // Move to next step regardless
       setBusy(false);
       onComplete();
-    } catch (e: any) {
-      console.error('Save error:', e);
+    } catch {
       setBusy(false);
       // Still complete the step even on error
       onComplete();
