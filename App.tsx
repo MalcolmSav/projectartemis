@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
 import React, { useEffect, useMemo } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, View, Text, ScrollView } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -34,6 +34,35 @@ import { useEvents } from './src/hooks/useEvents';
 import { useEventCheckinReminders } from './src/hooks/useEventCheckinReminders';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
+
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  componentDidMount() { SplashScreen.hideAsync().catch(() => {}); }
+  componentDidCatch() { SplashScreen.hideAsync().catch(() => {}); }
+  render() {
+    const { error } = this.state;
+    if (!error) return this.props.children;
+    return (
+      <ScrollView contentContainerStyle={{ flex: 1, padding: 32, paddingTop: 80, backgroundColor: '#1A0908' }}>
+        <Text style={{ color: '#FF6B6B', fontSize: 18, fontWeight: 'bold', marginBottom: 16 }}>
+          App crashed on startup
+        </Text>
+        <Text style={{ color: '#F2EFE3', fontFamily: 'Courier', fontSize: 13, lineHeight: 20 }}>
+          {error.message}
+        </Text>
+        {!!error.stack && (
+          <Text style={{ color: 'rgba(242,239,227,0.5)', fontFamily: 'Courier', fontSize: 11, marginTop: 16, lineHeight: 16 }}>
+            {error.stack}
+          </Text>
+        )}
+      </ScrollView>
+    );
+  }
+}
 
 // Schedules calendar-linked check-in notifications. Rendered as a sibling so its
 // realtime-driven re-renders don't churn the navigation theme (which flickers).
@@ -113,21 +142,23 @@ export default function App() {
   }, [ready]);
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <ThemeProvider initialMode="light">
-          <LanguageProvider>
-            <AuthProvider>
-              <AppStateProvider>
-                <StatusBar style="dark" />
-                <GatedApp />
-                <CalendarReminders />
-                <OfflineBanner />
-              </AppStateProvider>
-            </AuthProvider>
-          </LanguageProvider>
-        </ThemeProvider>
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+    <ErrorBoundary>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <ThemeProvider initialMode="light">
+            <LanguageProvider>
+              <AuthProvider>
+                <AppStateProvider>
+                  <StatusBar style="dark" />
+                  <GatedApp />
+                  <CalendarReminders />
+                  <OfflineBanner />
+                </AppStateProvider>
+              </AuthProvider>
+            </LanguageProvider>
+          </ThemeProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    </ErrorBoundary>
   );
 }

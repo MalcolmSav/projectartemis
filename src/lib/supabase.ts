@@ -3,13 +3,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
 
-const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
-const anon = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+const url = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
+const anon = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
 
-if (!url || !anon) {
-  throw new Error(
-    'Missing EXPO_PUBLIC_SUPABASE_URL / EXPO_PUBLIC_SUPABASE_ANON_KEY. Did you create a .env file at the project root and restart Expo?',
-  );
+// In development, warn loudly. In production a missing key means nothing will
+// work, but at least the app renders so the error boundary can show it.
+if (__DEV__ && (!url || !anon)) {
+  console.warn('Missing EXPO_PUBLIC_SUPABASE_URL / EXPO_PUBLIC_SUPABASE_ANON_KEY — check your .env file.');
 }
 
 export const supabase = createClient(url, anon, {
