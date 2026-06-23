@@ -107,10 +107,8 @@ export default function App() {
   const ready = fr && dm;
 
   useEffect(() => {
-    SplashScreen.hideAsync().catch(() => {});
-  }, []);
-
-  void ready;
+    if (ready) SplashScreen.hideAsync().catch(() => {});
+  }, [ready]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
