@@ -5,6 +5,7 @@ import { useTheme } from '../theme/ThemeProvider';
 import { useAuth } from '../state/Auth';
 import { useCircle } from '../hooks/useCircle';
 import { supabase, Profile } from '../lib/supabase';
+import { personName } from '../lib/person';
 
 export function OnboardingCircleStep({ onComplete }: { onComplete: () => void }) {
   const t = useTheme();
@@ -66,7 +67,6 @@ export function OnboardingCircleStep({ onComplete }: { onComplete: () => void })
       for (const { profile: person, relation } of selectedPeople) {
         const result = await invite(person.email, relation);
         if (result.error) {
-          console.error('Invite error:', result.error);
           // Continue anyway, don't fail the whole step
         }
       }
@@ -74,8 +74,7 @@ export function OnboardingCircleStep({ onComplete }: { onComplete: () => void })
       // Move to next step regardless
       setBusy(false);
       onComplete();
-    } catch (e: any) {
-      console.error('Save error:', e);
+    } catch {
       setBusy(false);
       // Still complete the step even on error
       onComplete();
@@ -173,13 +172,13 @@ export function OnboardingCircleStep({ onComplete }: { onComplete: () => void })
                 <View key={item.profile.id}>
                   <View style={{ flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 8 }}>
                     <Avatar 
-                      name={item.profile.name || item.profile.email} 
+                      name={personName(item.profile)} 
                       size={40} 
                       photoUri={item.profile.avatar_url ?? undefined} 
                     />
                     <View style={{ flex: 1, marginLeft: 12 }}>
                       <Text variant="body" weight="semibold">
-                        {item.profile.name || item.profile.email}
+                        {personName(item.profile)}
                       </Text>
                       {item.profile.username && (
                         <Text variant="small" color={t.colors.inkMute}>

@@ -11,6 +11,7 @@ export interface CheckIn {
   target_id: string | null;
   note: string | null;
   created_at: string;
+  seen_at: string | null;
 }
 
 export interface PendingRequest extends CheckIn {
@@ -37,6 +38,7 @@ export interface SentCheck {
   createdAt: string;
   status: SentCheckStatus;
   respondedAt: string | null;
+  seenAt: string | null;
 }
 
 export function useCheckIns() {
@@ -161,6 +163,7 @@ export function useCheckIns() {
         createdAt: req.created_at,
         status,
         respondedAt: answer?.created_at ?? null,
+        seenAt: req.seen_at ?? null,
       });
 
       // Urgent interrupts (alarm / need-help) within the active window, once each.

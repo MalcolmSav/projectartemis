@@ -258,7 +258,7 @@ export function OnboardingScreen() {
           <ScrollView contentContainerStyle={{ padding: t.spacing.pageH, paddingTop: 70 }} keyboardShouldPersistTaps="handled">
             <View style={{ alignItems: 'center', marginBottom: 22 }}>
               <Pressable onPress={onPickAvatar} disabled={uploading}>
-                <Avatar name={profile?.email || '?'} size={92} ring photoUri={profile?.avatar_url ?? undefined} />
+                <Avatar name={profile?.name || profile?.username || '?'} size={92} ring photoUri={profile?.avatar_url ?? undefined} />
               </Pressable>
               <Text variant="small" weight="semibold" color={t.colors.gold700} style={{ marginTop: 10 }}>
                 {uploading ? 'Uploading…' : profile?.avatar_url ? 'Change photo' : 'Add a photo'}

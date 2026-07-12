@@ -7,6 +7,7 @@ export interface Presence {
   lat: number;
   lng: number;
   updated_at: string;
+  battery_level: number | null;
 }
 
 /** Live presence rows visible to me (mine + circle members'). */

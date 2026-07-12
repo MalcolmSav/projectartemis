@@ -19,6 +19,8 @@ import { useAuth } from '../state/Auth';
 import { useCircle } from '../hooks/useCircle';
 import { useEmergencyContacts } from '../hooks/useEmergencyContacts';
 import { sendSosSms } from '../lib/sos';
+import { personName } from '../lib/person';
+import { useT } from '../i18n';
 import { RootStackParamList } from '../navigation/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -59,6 +61,7 @@ function Bar({ delay }: { delay: number }) {
 
 export function AlarmActiveScreen() {
   const t = useTheme();
+  const tr = useT();
   const nav = useNavigation<Nav>();
   const { user } = useAuth();
   const { members } = useCircle();
@@ -126,7 +129,7 @@ export function AlarmActiveScreen() {
 
   const onTextContacts = async () => {
     if (contacts.length === 0) {
-      Alert.alert('No emergency contacts', 'Add emergency contacts in your profile so they can be texted in an emergency.');
+      Alert.alert(tr('No emergency contacts'), tr('Add emergency contacts in your profile so they can be texted in an emergency.'));
       return;
     }
     setSmsBusy(true);
@@ -178,12 +181,12 @@ export function AlarmActiveScreen() {
 
       <ScrollView contentContainerStyle={{ padding: t.spacing.pageH, paddingTop: 80, paddingBottom: 32 }}>
         <Eyebrow color={palette.crimsonSoft} style={{ marginBottom: 6 }}>
-          ● ALARM ACTIVE
+          {tr('● ALARM ACTIVE')}
         </Eyebrow>
         <Text variant="displayH1" color="#F2EFE3" style={{ marginBottom: 18 }}>
-          Live location shared with your{' '}
+          {tr('Live location shared with your')}{' '}
           <Text variant="displayH1" italic style={{ color: palette.gold300 }}>
-            entire circle.
+            {tr('entire circle.')}
           </Text>
         </Text>
 
@@ -207,10 +210,10 @@ export function AlarmActiveScreen() {
           />
           <View style={{ flex: 1 }}>
             <Text variant="small" weight="semibold" color="#F2EFE3">
-              Alarm active · Circle notified
+              {tr('Alarm active · Circle notified')}
             </Text>
             <Text variant="meta" color={palette.crimsonSoft}>
-              Live location shared
+              {tr('Live location shared')}
             </Text>
           </View>
           <Waveform />
@@ -226,9 +229,9 @@ export function AlarmActiveScreen() {
             marginBottom: 14,
           }}
         >
-          <Eyebrow color={palette.crimsonSoft}>LAST KNOWN</Eyebrow>
+          <Eyebrow color={palette.crimsonSoft}>{tr('LAST KNOWN')}</Eyebrow>
           <Text variant="body" weight="semibold" color="#F2EFE3" style={{ marginTop: 4 }}>
-            {place ?? 'Locating…'}
+            {place ?? tr('Locating…')}
           </Text>
           <Text variant="meta" color={palette.crimsonSoft}>
             {placeTime ? placeTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'updating'}
@@ -237,12 +240,12 @@ export function AlarmActiveScreen() {
 
         {/* Notified circle */}
         <Eyebrow color={palette.crimsonSoft} style={{ marginBottom: 8 }}>
-          NOTIFIED
+          {tr('NOTIFIED')}
         </Eyebrow>
         <View style={{ gap: 8, marginBottom: 24 }}>
           {members.length === 0 ? (
             <Text variant="small" color={palette.crimsonSoft}>
-              No one in your circle yet. Add someone in the Circle tab so they're alerted next time.
+              {tr("No one in your circle yet. Add someone in the Circle tab so they're alerted next time.")}
             </Text>
           ) : (
             members.map((m) => (
@@ -257,10 +260,10 @@ export function AlarmActiveScreen() {
                   gap: 12,
                 }}
               >
-                <Avatar name={m.profile.name ?? m.profile.email} size={40} photoUri={m.profile.avatar_url ?? undefined} />
+                <Avatar name={personName(m.profile)} size={40} photoUri={m.profile.avatar_url ?? undefined} />
                 <View style={{ flex: 1 }}>
                   <Text variant="body" weight="semibold" color="#F2EFE3">
-                    {m.profile.name ?? m.profile.email}
+                    {personName(m.profile)}
                   </Text>
                   <Text variant="meta" color={palette.crimsonSoft}>
                     {m.relation ?? 'Friend'}
@@ -270,7 +273,7 @@ export function AlarmActiveScreen() {
                 <Pressable
                   disabled={!m.profile.phone}
                   accessibilityRole="button"
-                  accessibilityLabel={`Call ${m.profile.name ?? 'circle member'}`}
+                  accessibilityLabel={`Call ${personName(m.profile)}`}
                   onPress={() => {
                     if (m.profile.phone) Linking.openURL(`tel:${m.profile.phone.replace(/\s+/g, '')}`);
                   }}
@@ -310,7 +313,7 @@ export function AlarmActiveScreen() {
           style={{ backgroundColor: 'rgba(255,255,255,0.10)', marginBottom: 10 }}
         >
           <Text style={{ fontFamily: t.type.bodySemibold, fontSize: 15, color: '#F2EFE3' }}>
-            {smsBusy ? 'Opening Messages…' : '📵  Text my emergency contacts'}
+            {smsBusy ? tr('Opening Messages…') : tr('📵  Text my emergency contacts')}
           </Text>
         </PillButton>
 
@@ -321,7 +324,7 @@ export function AlarmActiveScreen() {
           onPress={() => nav.goBack()}
           style={{ backgroundColor: '#F5F0E8' }}
         >
-          <Text style={{ color: palette.crimson, fontFamily: t.type.bodySemibold }}>Cancel alarm</Text>
+          <Text style={{ color: palette.crimson, fontFamily: t.type.bodySemibold }}>{tr('Cancel alarm')}</Text>
         </PillButton>
       </ScrollView>
     </View>

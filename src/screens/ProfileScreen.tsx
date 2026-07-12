@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ScrollView, View, Pressable, TextInput, Alert, RefreshControl, Linking } from 'react-native';
-import { TopBar, Text, Eyebrow, Avatar, Card, Divider, PillButton, BottomSheet } from '../components';
+import { TopBar, Text, Eyebrow, Avatar, Card, Divider, PillButton, BottomSheet, Toggle } from '../components';
 import { ArtemisMark } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
 import { useAuth } from '../state/Auth';
 import { useEvents } from '../hooks/useEvents';
 import { useEmergencyContacts } from '../hooks/useEmergencyContacts';
 import { useHomePlace } from '../hooks/useHomePlace';
+import { useCircle } from '../hooks/useCircle';
 import { useT, useLang } from '../i18n';
 import { supabase } from '../lib/supabase';
 import { pickAndUploadAvatar } from '../lib/avatar';
@@ -20,6 +21,7 @@ export function ProfileScreen() {
   const { events } = useEvents();
   const { contacts } = useEmergencyContacts(profile?.id);
   const { home, setFromCurrentLocation, clearHome } = useHomePlace();
+  const { members: circleMembers } = useCircle();
   const [homeBusy, setHomeBusy] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
 
@@ -32,6 +34,36 @@ export function ProfileScreen() {
 
   const display = profile?.name?.trim() || profile?.email?.split('@')[0] || '—';
   const [uploading, setUploading] = useState(false);
+
+  type NotifPrefs = {
+    wellness: boolean; circle: boolean; alarm: boolean; trips: boolean; messages: boolean;
+    quiet_from?: string; quiet_to?: string; // "HH:MM" 24h
+  };
+  const DEFAULT_PREFS: NotifPrefs = { wellness: true, circle: true, alarm: true, trips: true, messages: true };
+  const [notifPrefs, setNotifPrefs] = useState<NotifPrefs>(DEFAULT_PREFS);
+
+  useEffect(() => {
+    if (!profile?.id) return;
+    supabase
+      .from('profiles')
+      .select('notification_prefs')
+      .eq('id', profile.id)
+      .single()
+      .then(({ data }) => {
+        if (data?.notification_prefs) setNotifPrefs({ ...DEFAULT_PREFS, ...(data.notification_prefs as Partial<NotifPrefs>) });
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.id]);
+
+  const updatePref = async (patch: Partial<NotifPrefs>) => {
+    const next = { ...notifPrefs, ...patch };
+    setNotifPrefs(next);
+    if (!profile?.id) return;
+    await supabase.from('profiles').update({ notification_prefs: next }).eq('id', profile.id);
+  };
+
+  const togglePref = (key: keyof Pick<NotifPrefs, 'wellness' | 'circle' | 'alarm' | 'trips' | 'messages'>, value: boolean) =>
+    updatePref({ [key]: value });
 
   const onPickAvatar = async () => {
     if (!profile) return;
@@ -79,6 +111,14 @@ export function ProfileScreen() {
             </Text>
           </Pressable>
         </View>
+
+        <ProfileCompleteness
+          hasName={!!profile?.name?.trim()}
+          hasPhoto={!!profile?.avatar_url}
+          hasContacts={contacts.length > 0}
+          hasCircle={circleMembers.length > 0}
+          hasHome={!!home}
+        />
 
         <Eyebrow style={{ marginBottom: 8 }}>{tr('ACCOUNT')}</Eyebrow>
         <Card style={{ marginBottom: 18 }}>
@@ -185,6 +225,71 @@ export function ProfileScreen() {
             </Card>
           </>
         )}
+
+        <Eyebrow style={{ marginBottom: 8 }}>{tr('NOTIFICATIONS')}</Eyebrow>
+        <Card style={{ marginBottom: 18 }}>
+          {(
+            [
+              { key: 'wellness' as const, label: tr('Wellness checks') },
+              { key: 'circle' as const, label: tr('Circle invites & joins') },
+              { key: 'alarm' as const, label: tr('Alarms') },
+              { key: 'trips' as const, label: tr('Trip updates') },
+              { key: 'messages' as const, label: tr('Chat messages') },
+            ]
+          ).map(({ key, label }, i, arr) => (
+            <View key={key}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10 }}>
+                <Text variant="body">{label}</Text>
+                <Toggle on={!!notifPrefs[key]} onChange={(v) => togglePref(key, v)} />
+              </View>
+              {i < arr.length - 1 && <Divider />}
+            </View>
+          ))}
+          <Divider style={{ marginVertical: 4 }} />
+          <View style={{ paddingTop: 10 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <View>
+                <Text variant="body">{tr('Quiet hours')}</Text>
+                <Text variant="meta" color={t.colors.inkMute}>{tr('No push notifications in this window')}</Text>
+              </View>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              {(['quiet_from', 'quiet_to'] as const).map((field) => {
+                const current = notifPrefs[field] ?? (field === 'quiet_from' ? '22:00' : '07:00');
+                const [hStr, mStr] = current.split(':');
+                const h = parseInt(hStr, 10);
+                const m = parseInt(mStr, 10);
+                const bump = (dh: number, dm: number) => {
+                  const nh = ((h + dh) + 24) % 24;
+                  const nm = ((m + dm) + 60) % 60;
+                  updatePref({ [field]: `${String(nh).padStart(2, '0')}:${String(nm).padStart(2, '0')}` });
+                };
+                return (
+                  <View key={field} style={{ flex: 1, alignItems: 'center', gap: 4 }}>
+                    <Text variant="meta" color={t.colors.inkMute}>{field === 'quiet_from' ? tr('From') : tr('To')}</Text>
+                    <View style={{ flexDirection: 'row', gap: 4 }}>
+                      <View style={{ alignItems: 'center', gap: 4 }}>
+                        <Pressable onPress={() => bump(1, 0)} style={{ padding: 4 }}><Text variant="small">▲</Text></Pressable>
+                        <View style={{ backgroundColor: t.colors.forest700, borderRadius: t.radii.sm, paddingHorizontal: 10, paddingVertical: 6 }}>
+                          <Text style={{ fontFamily: t.type.bodyBold, fontSize: 18, color: '#fff' }}>{String(h).padStart(2, '0')}</Text>
+                        </View>
+                        <Pressable onPress={() => bump(-1, 0)} style={{ padding: 4 }}><Text variant="small">▼</Text></Pressable>
+                      </View>
+                      <Text style={{ fontFamily: t.type.bodyBold, fontSize: 20, alignSelf: 'center', color: t.colors.ink }}>:</Text>
+                      <View style={{ alignItems: 'center', gap: 4 }}>
+                        <Pressable onPress={() => bump(0, 5)} style={{ padding: 4 }}><Text variant="small">▲</Text></Pressable>
+                        <View style={{ backgroundColor: t.colors.forest700, borderRadius: t.radii.sm, paddingHorizontal: 10, paddingVertical: 6 }}>
+                          <Text style={{ fontFamily: t.type.bodyBold, fontSize: 18, color: '#fff' }}>{String(m).padStart(2, '0')}</Text>
+                        </View>
+                        <Pressable onPress={() => bump(0, -5)} style={{ padding: 4 }}><Text variant="small">▼</Text></Pressable>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        </Card>
 
         <Eyebrow style={{ marginBottom: 8 }}>{tr('APPEARANCE')}</Eyebrow>
         <Card style={{ marginBottom: 18 }}>
@@ -305,6 +410,40 @@ export function ProfileScreen() {
           setEditOpen(false);
         }}
       />
+    </View>
+  );
+}
+
+function ProfileCompleteness({
+  hasName, hasPhoto, hasContacts, hasCircle, hasHome,
+}: {
+  hasName: boolean; hasPhoto: boolean; hasContacts: boolean; hasCircle: boolean; hasHome: boolean;
+}) {
+  const t = useTheme();
+  const tr = useT();
+  const steps = [
+    { label: tr('Add your name'), done: hasName },
+    { label: tr('Add a profile photo'), done: hasPhoto },
+    { label: tr('Add someone to your circle'), done: hasCircle },
+    { label: tr('Add emergency contacts'), done: hasContacts },
+    { label: tr('Set your home location'), done: hasHome },
+  ];
+  const pct = Math.round((steps.filter((s) => s.done).length / steps.length) * 100);
+  if (pct === 100) return null;
+  const nextMissing = steps.find((s) => !s.done);
+
+  return (
+    <View style={{ marginBottom: 18 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+        <Eyebrow>{tr('Complete your profile')}</Eyebrow>
+        <Text variant="meta" color={t.colors.gold700} weight="semibold">{pct}%</Text>
+      </View>
+      <View style={{ height: 6, backgroundColor: t.colors.hairline, borderRadius: 999, overflow: 'hidden', marginBottom: 8 }}>
+        <View style={{ height: 6, width: `${pct}%` as any, backgroundColor: t.colors.forest700, borderRadius: 999 }} />
+      </View>
+      {nextMissing && (
+        <Text variant="meta" color={t.colors.inkSoft}>Next: {nextMissing.label}</Text>
+      )}
     </View>
   );
 }

@@ -7,6 +7,7 @@ import { useTheme } from '../theme/ThemeProvider';
 import { useAppState } from '../state/AppState';
 import { useCircle } from '../hooks/useCircle';
 import { usePresence } from '../hooks/usePresence';
+import { personName } from '../lib/person';
 import { ShareMode } from '../data/demo';
 
 const MODES: { id: ShareMode; label: string; sub: string }[] = [
@@ -134,7 +135,7 @@ export function LocationShareScreen() {
               const theirPresence = presenceByUser[m.profile.id];
               const theyShareBack =
                 theirPresence && Date.now() - new Date(theirPresence.updated_at).getTime() < 5 * 60_000;
-              const name = m.profile.name ?? m.profile.email;
+              const name = personName(m.profile);
               return (
                 <View key={m.edgeId}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', padding: 12, gap: 12 }}>

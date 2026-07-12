@@ -310,7 +310,12 @@ export function AuthScreen() {
               }
               setBusy(true);
               const trimmedEmail = email.trim();
-              const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail);
+              // Deep link back into the app — the Auth provider exchanges the
+              // tokens and shows the reset screen. Requires artemis://reset-password
+              // in Supabase Auth → URL Configuration → Redirect URLs.
+              const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
+                redirectTo: 'artemis://reset-password',
+              });
               setBusy(false);
               if (error) {
                 setErr(error.message);

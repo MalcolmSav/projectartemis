@@ -1,5 +1,9 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
+import { supabase } from './supabase';
+
+const PROJECT_ID = 'b28a3563-3015-4f10-9bc0-75610da26d85';
 
 // Show banner + sound even when the app is foregrounded.
 Notifications.setNotificationHandler({
@@ -66,6 +70,29 @@ export async function presentLocalNotification(opts: {
     });
   } catch {
     // best-effort
+  }
+}
+
+/**
+ * Register this device's Expo push token with Supabase.
+ * Must be called after the user is signed in. Safe to call multiple times —
+ * it upserts. Does nothing on web or if permissions are denied.
+ */
+export async function registerPushToken(userId: string): Promise<void> {
+  if (Platform.OS === 'web') return;
+  try {
+    const ok = await ensureNotificationPermissions();
+    if (!ok) return;
+    const tokenData = await Notifications.getExpoPushTokenAsync({
+      projectId: Constants.expoConfig?.extra?.eas?.projectId ?? PROJECT_ID,
+    });
+    await supabase
+      .from('profiles')
+      .update({ push_token: tokenData.data })
+      .eq('id', userId);
+  } catch {
+    // Simulator and Expo Go don't support remote push — fail silently.
+    // Will retry next app launch on a real device.
   }
 }
 

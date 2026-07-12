@@ -15,6 +15,7 @@ import { FakeCallOnCallScreen } from '../screens/FakeCallOnCallScreen';
 import { WellnessIncomingScreen } from '../screens/WellnessIncomingScreen';
 import { AlarmActiveScreen } from '../screens/AlarmActiveScreen';
 import { EmergencyCallScreen } from '../screens/EmergencyCallScreen';
+import { ActivityScreen } from '../screens/ActivityScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -55,6 +56,7 @@ export function RootNavigator() {
         component={EmergencyCallScreen}
         options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
       />
+      <Stack.Screen name="Activity" component={ActivityScreen} options={{ animation: 'slide_from_right' }} />
     </Stack.Navigator>
   );
 }

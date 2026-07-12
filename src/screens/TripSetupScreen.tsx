@@ -1,44 +1,75 @@
-import React, { useEffect, useState } from 'react';
-import { ScrollView, View, Pressable, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { ScrollView, View, Pressable, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import * as Location from 'expo-location';
+import * as Haptics from 'expo-haptics';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Text, Eyebrow, Card, PillButton, Avatar, BottomSheet } from '../components';
-import { IconChevron, IconClock } from '../components/icons';
+import { IconChevron, IconClock, IconLocate } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
 import { useCircle } from '../hooks/useCircle';
 import { useTrips } from '../hooks/useTrips';
 import { useAuth } from '../state/Auth';
 import { supabase } from '../lib/supabase';
 import { palette } from '../theme/tokens';
+import { personName } from '../lib/person';
+import { useT } from '../i18n';
 import { RootStackParamList } from '../navigation/types';
+import {
+  searchPlaces,
+  getRoute,
+  formatDistance,
+  formatDuration,
+  arrivalTime,
+  Place,
+  Route,
+  TravelMode,
+  LatLng,
+} from '../lib/routing';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
-const TRANSPORTS: { id: string; label: string; emoji: string }[] = [
+
+const TRANSPORTS: { id: TravelMode; label: string; emoji: string }[] = [
   { id: 'walk', label: 'Walking', emoji: '🚶' },
-  { id: 'transit', label: 'Transit', emoji: '🚇' },
-  { id: 'car', label: 'Car', emoji: '🚗' },
-  { id: 'taxi', label: 'Taxi', emoji: '🚕' },
+  { id: 'bike', label: 'Biking', emoji: '🚴' },
+  { id: 'car', label: 'Driving', emoji: '🚗' },
 ];
 
 export function TripSetupScreen() {
   const t = useTheme();
+  const tr = useT();
   const nav = useNavigation<Nav>();
   const { members } = useCircle();
   const { user } = useAuth();
   const { activeTrip, loading, start } = useTrips();
-  const [destination, setDestination] = useState('');
+
+  // Place search
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<Place[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [place, setPlace] = useState<Place | null>(null);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Route
+  const [myPos, setMyPos] = useState<LatLng | null>(null);
+  const [route, setRoute] = useState<Route | null>(null);
+  const [routing, setRouting] = useState(false);
+
+  const [transport, setTransport] = useState<TravelMode>('walk');
   const [etaHour, setEtaHour] = useState<number | null>(null);
   const [etaMinute, setEtaMinute] = useState<number | null>(null);
   const [etaOpen, setEtaOpen] = useState(false);
-  const [transport, setTransport] = useState('walk');
-
-  const etaString = etaHour !== null && etaMinute !== null
-    ? `${String(etaHour).padStart(2, '0')}:${String(etaMinute).padStart(2, '0')}`
-    : null;
   const [buddyId, setBuddyId] = useState<string | null>(members[0]?.profile.id ?? null);
-  const [locationInterval, setLocationInterval] = useState(60); // seconds
+  const [locationInterval, setLocationInterval] = useState(60);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  const manualEta = etaHour !== null && etaMinute !== null
+    ? `${String(etaHour).padStart(2, '0')}:${String(etaMinute).padStart(2, '0')}`
+    : null;
+  // Auto ETA from the computed route; manual override wins.
+  const autoEta = route ? arrivalTime(route.durationS) : null;
+  const etaString = manualEta ?? autoEta;
 
   useEffect(() => {
     if (!loading && activeTrip) nav.replace('TripActive');
@@ -48,13 +79,78 @@ export function TripSetupScreen() {
     if (!buddyId && members[0]) setBuddyId(members[0].profile.id);
   }, [members, buddyId]);
 
+  // Grab current location once — used to bias search and as route origin.
+  useEffect(() => {
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') return;
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        setMyPos({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
+      } catch {
+        // best-effort
+      }
+    })();
+  }, []);
+
+  // Debounced place search (Nominatim asks for ≤1 req/s).
+  const onQueryChange = (text: string) => {
+    setQuery(text);
+    setPlace(null);
+    setRoute(null);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    if (text.trim().length < 3) {
+      setResults([]);
+      return;
+    }
+    searchTimer.current = setTimeout(async () => {
+      setSearching(true);
+      const found = await searchPlaces(text, myPos ?? undefined);
+      setSearching(false);
+      setResults(found);
+    }, 500);
+  };
+
+  const pickPlace = (p: Place) => {
+    setPlace(p);
+    setQuery(p.name);
+    setResults([]);
+  };
+
+  // Compute the route whenever place or transport changes.
+  useEffect(() => {
+    if (!place || !myPos) { setRoute(null); return; }
+    let cancelled = false;
+    (async () => {
+      setRouting(true);
+      const r = await getRoute(myPos, { latitude: place.lat, longitude: place.lng }, transport);
+      if (!cancelled) {
+        setRoute(r);
+        setRouting(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [place, transport, myPos]);
+
   const submit = async () => {
-    if (!destination.trim()) return setErr('Destination is required');
+    if (!place && !query.trim()) return setErr(tr('Destination is required'));
     setBusy(true);
     setErr(null);
-    const res = await start({ destination: destination.trim(), eta: etaString ?? undefined, buddyId, transport, locationInterval });
+    const res = await start({
+      destination: place?.name ?? query.trim(),
+      eta: etaString ?? undefined,
+      buddyId,
+      transport,
+      locationInterval,
+      destLat: place?.lat,
+      destLng: place?.lng,
+      route: route ? route.coords.map((c) => [c.longitude, c.latitude] as [number, number]) : undefined,
+      distanceM: route?.distanceM,
+      durationS: route?.durationS,
+    });
     setBusy(false);
     if (res.error) return setErr(res.error);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     // Let the buddy know they can follow this trip (gives them a chat heads-up).
     if (buddyId && user) {
@@ -64,7 +160,7 @@ export function TripSetupScreen() {
         .insert({
           sender_id: user.id,
           recipient_id: buddyId,
-          body: `🧭 I just started a trip to ${destination.trim()}${etaText}. You can follow my live location in Artemis.`,
+          body: `🧭 I just started a trip to ${place?.name ?? query.trim()}${etaText}. You can follow my live location in Artemis.`,
         })
         .then(() => {});
     }
@@ -82,30 +178,127 @@ export function TripSetupScreen() {
           <IconChevron dir="left" color={t.colors.inkSoft} />
         </Pressable>
         <Text variant="large" weight="semibold">
-          Trip Mode
+          {tr('Trip Mode')}
         </Text>
       </View>
       <ScrollView contentContainerStyle={{ paddingHorizontal: t.spacing.pageH, paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
-        <Eyebrow style={{ marginBottom: 6 }}>DESTINATION</Eyebrow>
-        <Card style={{ marginBottom: 14 }}>
-          <TextInput
-            value={destination}
-            onChangeText={setDestination}
-            placeholder="Where are you going?"
-            placeholderTextColor={t.colors.inkMute}
-            style={{ fontFamily: t.type.body, fontSize: 16, color: t.colors.ink }}
-          />
+        <Eyebrow style={{ marginBottom: 6 }}>{tr('DESTINATION')}</Eyebrow>
+        <Card style={{ marginBottom: results.length > 0 || searching ? 4 : 14 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <TextInput
+              value={query}
+              onChangeText={onQueryChange}
+              placeholder={tr('Search for a place or address…')}
+              placeholderTextColor={t.colors.inkMute}
+              style={{ flex: 1, fontFamily: t.type.body, fontSize: 16, color: t.colors.ink }}
+            />
+            {place && (
+              <View style={{ width: 20, height: 20, borderRadius: 999, backgroundColor: palette.gold500, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: 11, color: palette.forest900 }}>✓</Text>
+              </View>
+            )}
+          </View>
         </Card>
 
-        <Eyebrow style={{ marginBottom: 6 }}>ETA (OPTIONAL)</Eyebrow>
+        {/* Search results dropdown */}
+        {(results.length > 0 || searching) && (
+          <Card style={{ marginBottom: 14, paddingVertical: 4 }}>
+            {searching ? (
+              <ActivityIndicator color={t.colors.forest700} style={{ paddingVertical: 12 }} />
+            ) : (
+              results.map((r, i) => (
+                <Pressable
+                  key={`${r.lat},${r.lng}`}
+                  onPress={() => pickPlace(r)}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 10,
+                    paddingVertical: 10,
+                    borderBottomWidth: i < results.length - 1 ? 1 : 0,
+                    borderBottomColor: t.colors.hairline,
+                  }}
+                >
+                  <IconLocate size={14} color={t.colors.inkMute} />
+                  <View style={{ flex: 1 }}>
+                    <Text variant="body" weight="semibold" numberOfLines={1}>{r.name}</Text>
+                    <Text variant="meta" color={t.colors.inkMute} numberOfLines={1}>{r.fullName}</Text>
+                  </View>
+                </Pressable>
+              ))
+            )}
+          </Card>
+        )}
+
+        <Eyebrow style={{ marginBottom: 6 }}>{tr('HOW ARE YOU TRAVELLING?')}</Eyebrow>
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+          {TRANSPORTS.map((trns) => {
+            const active = transport === trns.id;
+            return (
+              <Pressable
+                key={trns.id}
+                onPress={() => setTransport(trns.id)}
+                style={{
+                  flex: 1,
+                  alignItems: 'center',
+                  paddingVertical: 14,
+                  borderRadius: t.radii.md,
+                  backgroundColor: active ? t.colors.forest700 : t.colors.parchment,
+                }}
+              >
+                <Text style={{ fontSize: 24 }}>{trns.emoji}</Text>
+                <Text variant="meta" weight="semibold" color={active ? palette.gold300 : t.colors.inkSoft} style={{ marginTop: 4 }}>
+                  {tr(trns.label)}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {/* Route preview: distance · duration · arrival */}
+        {(routing || route) && (
+          <Card style={{ marginBottom: 14, backgroundColor: t.colors.forest700 }}>
+            {routing ? (
+              <ActivityIndicator color={palette.gold300} style={{ paddingVertical: 6 }} />
+            ) : route ? (
+              <View style={{ flexDirection: 'row', justifyContent: 'space-around' }}>
+                <View style={{ alignItems: 'center' }}>
+                  <Eyebrow color="rgba(242,226,187,0.6)">{tr('DISTANCE')}</Eyebrow>
+                  <Text style={{ fontFamily: t.type.display, fontSize: 20, color: '#fff', paddingTop: 4 }}>
+                    {formatDistance(route.distanceM)}
+                  </Text>
+                </View>
+                <View style={{ alignItems: 'center' }}>
+                  <Eyebrow color="rgba(242,226,187,0.6)">{tr('TIME')}</Eyebrow>
+                  <Text style={{ fontFamily: t.type.display, fontSize: 20, color: palette.gold300, paddingTop: 4 }}>
+                    {formatDuration(route.durationS)}
+                  </Text>
+                </View>
+                <View style={{ alignItems: 'center' }}>
+                  <Eyebrow color="rgba(242,226,187,0.6)">{tr('ARRIVE')}</Eyebrow>
+                  <Text style={{ fontFamily: t.type.display, fontSize: 20, color: '#fff', paddingTop: 4 }}>
+                    ~{arrivalTime(route.durationS)}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+          </Card>
+        )}
+        {place && !routing && !route && (
+          <Text variant="meta" color={t.colors.inkMute} style={{ marginBottom: 14, textAlign: 'center' }}>
+            {tr("Couldn't compute a route — trip will still work with your manual ETA.")}
+          </Text>
+        )}
+
+        <Eyebrow style={{ marginBottom: 6 }}>ETA {route ? tr('(AUTO — TAP TO OVERRIDE)') : tr('(OPTIONAL)')}</Eyebrow>
         <Pressable onPress={() => setEtaOpen(true)}>
           <Card style={{ marginBottom: 14 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               <Text variant="body" color={etaString ? t.colors.ink : t.colors.inkMute}>
-                {etaString ?? 'Set arrival time…'}
+                {etaString ? `${etaString}${!manualEta && autoEta ? `  ·  ${tr('auto')}` : ''}` : tr('Set arrival time…')}
               </Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                {etaString && (
+                {manualEta && (
                   <Pressable
                     onPress={(e) => { e.stopPropagation(); setEtaHour(null); setEtaMinute(null); }}
                     hitSlop={12}
@@ -119,35 +312,10 @@ export function TripSetupScreen() {
           </Card>
         </Pressable>
 
-        <Eyebrow style={{ marginBottom: 6 }}>TRANSPORT</Eyebrow>
-        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 18 }}>
-          {TRANSPORTS.map((tr) => {
-            const active = transport === tr.id;
-            return (
-              <Pressable
-                key={tr.id}
-                onPress={() => setTransport(tr.id)}
-                style={{
-                  flex: 1,
-                  alignItems: 'center',
-                  paddingVertical: 14,
-                  borderRadius: t.radii.md,
-                  backgroundColor: active ? t.colors.forest700 : t.colors.parchment,
-                }}
-              >
-                <Text style={{ fontSize: 24 }}>{tr.emoji}</Text>
-                <Text variant="meta" weight="semibold" color={active ? palette.gold300 : t.colors.inkSoft} style={{ marginTop: 4 }}>
-                  {tr.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        <Eyebrow style={{ marginBottom: 6 }}>BUDDY (NOTIFIED IF YOU MISS ETA)</Eyebrow>
+        <Eyebrow style={{ marginBottom: 6 }}>{tr('BUDDY (NOTIFIED IF YOU MISS ETA)')}</Eyebrow>
         {members.length === 0 ? (
           <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 18 }}>
-            Add a friend in the Circle tab first — Trip Mode needs a buddy.
+            {tr('Add a friend in the Circle tab first — Trip Mode needs a buddy.')}
           </Text>
         ) : (
           <View style={{ gap: 8, marginBottom: 18 }}>
@@ -167,16 +335,16 @@ export function TripSetupScreen() {
                   }}
                 >
                   <Avatar
-                    name={p.profile.name ?? p.profile.email}
+                    name={personName(p.profile)}
                     size={40}
                     photoUri={p.profile.avatar_url ?? undefined}
                   />
                   <View style={{ flex: 1 }}>
                     <Text variant="body" weight="semibold" color={active ? palette.gold300 : t.colors.ink}>
-                      {p.profile.name ?? p.profile.email}
+                      {personName(p.profile)}
                     </Text>
                     <Text variant="meta" color={active ? 'rgba(242,226,187,0.7)' : t.colors.inkMute}>
-                      {p.relation ?? 'Friend'}
+                      {p.relation ?? tr('Friend')}
                     </Text>
                   </View>
                   <View
@@ -198,13 +366,13 @@ export function TripSetupScreen() {
           </View>
         )}
 
-        <Eyebrow style={{ marginBottom: 6 }}>LOCATION UPDATE FREQUENCY</Eyebrow>
+        <Eyebrow style={{ marginBottom: 6 }}>{tr('LOCATION UPDATE FREQUENCY')}</Eyebrow>
         <View style={{ flexDirection: 'row', gap: 8, marginBottom: 18 }}>
           {([
+            { label: '15 s', value: 15 },
             { label: '1 min', value: 60 },
             { label: '5 min', value: 300 },
             { label: '10 min', value: 600 },
-            { label: '30 min', value: 1800 },
           ] as const).map((opt) => {
             const active = locationInterval === opt.value;
             return (
@@ -229,10 +397,10 @@ export function TripSetupScreen() {
 
         <View style={{ backgroundColor: t.colors.gold100, padding: 14, borderRadius: t.radii.md, marginBottom: 18 }}>
           <Text variant="meta" color={t.colors.gold700} weight="semibold">
-            HOW IT WORKS
+            {tr('HOW IT WORKS')}
           </Text>
           <Text variant="small" color={t.colors.inkSoft} style={{ marginTop: 4 }}>
-            We'll ask if you're safe when you reach your ETA. If you don't confirm within 5 minutes, your buddy is alerted and your live location is shared.
+            {tr("Your buddy sees your live position and route on a map. We'll ask if you're safe when you reach your ETA — if you don't confirm within 5 minutes, they're alerted and your live location is shared.")}
           </Text>
         </View>
 
@@ -242,8 +410,8 @@ export function TripSetupScreen() {
           </Text>
         )}
 
-        <PillButton size="lg" block disabled={busy || !destination.trim() || members.length === 0} onPress={submit}>
-          {busy ? 'Starting…' : '▶  Start trip'}
+        <PillButton size="lg" block disabled={busy || (!place && !query.trim()) || members.length === 0} onPress={submit}>
+          {busy ? tr('Starting…') : tr('▶  Start trip')}
         </PillButton>
       </ScrollView>
 
@@ -272,6 +440,7 @@ function EtaPickerSheet({
   initialMinute: number;
 }) {
   const t = useTheme();
+  const tr = useT();
   const [hour, setHour] = useState(initialHour);
   const [minute, setMinute] = useState(initialMinute);
 
@@ -285,10 +454,10 @@ function EtaPickerSheet({
   return (
     <BottomSheet visible={open} onClose={onClose}>
       <Text style={{ fontFamily: t.type.display, fontSize: 24, lineHeight: 32, paddingTop: 2, marginBottom: 4 }}>
-        Set arrival time
+        {tr('Set arrival time')}
       </Text>
       <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 20 }}>
-        We'll check that you're safe when you reach this time.
+        {tr("We'll check that you're safe when you reach this time.")}
       </Text>
 
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 24 }}>
@@ -334,10 +503,10 @@ function EtaPickerSheet({
       </View>
 
       <PillButton block onPress={() => onConfirm(hour, minute)} style={{ marginBottom: 8 }}>
-        Set ETA to {fmt2(hour)}:{fmt2(minute)}
+        {tr('Set ETA to {time}', { time: `${fmt2(hour)}:${fmt2(minute)}` })}
       </PillButton>
       <PillButton variant="ghost" block onPress={onClose}>
-        Cancel
+        {tr('Cancel')}
       </PillButton>
     </BottomSheet>
   );

@@ -7,14 +7,32 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "ios": { "simulator": true }
+      "ios": { "simulator": true },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://pbqcsgthnwaqpddsucrx.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBicWNzZ3RobndhcXBkZHN1Y3J4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwODkyMTYsImV4cCI6MjA5MzY2NTIxNn0.w452FW3ckSyPGeVNVC95IVbBwNwq0Q0MGD2_itBNeDM",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "853529843469-t452sbd1t6sdh4hd5ucko2e5gu1on6hm.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "853529843469-h0ui3tlrpprnntivn803pr0qi152i3sq.apps.googleusercontent.com"
+      }
     },
     "preview": {
       "distribution": "internal",
-      "ios": { "simulator": false }
+      "ios": { "simulator": false },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://pbqcsgthnwaqpddsucrx.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBicWNzZ3RobndhcXBkZHN1Y3J4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwODkyMTYsImV4cCI6MjA5MzY2NTIxNn0.w452FW3ckSyPGeVNVC95IVbBwNwq0Q0MGD2_itBNeDM",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "853529843469-t452sbd1t6sdh4hd5ucko2e5gu1on6hm.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "853529843469-h0ui3tlrpprnntivn803pr0qi152i3sq.apps.googleusercontent.com"
+      }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://pbqcsgthnwaqpddsucrx.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBicWNzZ3RobndhcXBkZHN1Y3J4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwODkyMTYsImV4cCI6MjA5MzY2NTIxNn0.w452FW3ckSyPGeVNVC95IVbBwNwq0Q0MGD2_itBNeDM",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "853529843469-t452sbd1t6sdh4hd5ucko2e5gu1on6hm.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "853529843469-h0ui3tlrpprnntivn803pr0qi152i3sq.apps.googleusercontent.com"
+      }
     }
   },
   "submit": {

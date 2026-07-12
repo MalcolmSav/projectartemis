@@ -3,9 +3,10 @@ import { ScrollView, View, Pressable, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import * as Battery from 'expo-battery';
+import * as Haptics from 'expo-haptics';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Text, Eyebrow, Card, PillButton, Avatar } from '../components';
+import { Text, Eyebrow, Card, PillButton, Avatar, TripMap } from '../components';
 import { IconChevron, IconLocate } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
 import { useTrips } from '../hooks/useTrips';
@@ -15,7 +16,10 @@ import { useHomePlace } from '../hooks/useHomePlace';
 import { useAuth } from '../state/Auth';
 import { supabase } from '../lib/supabase';
 import { palette } from '../theme/tokens';
+import { personName } from '../lib/person';
+import { useT } from '../i18n';
 import { RootStackParamList } from '../navigation/types';
+import { getRoute, formatDistance, formatDuration, LatLng, TravelMode } from '../lib/routing';
 
 // Grace period after ETA before the buddy/circle is auto-alerted.
 const ETA_GRACE_MS = 5 * 60 * 1000;
@@ -23,8 +27,11 @@ const ETA_GRACE_MS = 5 * 60 * 1000;
 // Warn the buddy while there's still enough charge to actually send the message.
 const LOW_BATTERY_THRESHOLD = 0.15;
 
-// How close (metres) to your saved home counts as "arrived".
+// How close (metres) to home OR the trip destination counts as "arrived".
 const ARRIVAL_RADIUS_M = 120;
+
+// Re-route (recompute remaining distance/time) at most this often.
+const REROUTE_MIN_MS = 20_000;
 
 /** Great-circle distance between two coords, in metres. */
 function distanceM(aLat: number, aLng: number, bLat: number, bLng: number): number {
@@ -38,24 +45,49 @@ function distanceM(aLat: number, aLng: number, bLat: number, bLng: number): numb
 }
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
-const EMOJI: Record<string, string> = { walk: '🚶', transit: '🚇', car: '🚗', taxi: '🚕' };
+const EMOJI: Record<string, string> = { walk: '🚶', bike: '🚴', car: '🚗', transit: '🚇', taxi: '🚕' };
+const VALID_MODES: TravelMode[] = ['walk', 'bike', 'car'];
 
 export function TripActiveScreen() {
   const t = useTheme();
+  const tr = useT();
   const nav = useNavigation<Nav>();
   const { activeTrip, loading, finish } = useTrips();
   const { members } = useCircle();
   const { recordAlarm, recordOk } = useCheckIns();
   const { home } = useHomePlace();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [now, setNow] = useState(Date.now());
   const [lastSent, setLastSent] = useState<Date | null>(null);
-  const [nextIn, setNextIn] = useState<number | null>(null); // seconds until next send
+  const [nextIn, setNextIn] = useState<number | null>(null);
   const [etaHandled, setEtaHandled] = useState(false);
+  const [livePos, setLivePos] = useState<LatLng | null>(null);
+  const [liveRoute, setLiveRoute] = useState<LatLng[] | null>(null);
+  const [remaining, setRemaining] = useState<{ m: number; s: number } | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const escalateRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const arrivedHomeRef = useRef(false);
+  const arrivedRef = useRef(false);
+  const lastRerouteRef = useRef(0);
+
+  const destCoord: LatLng | null =
+    activeTrip?.dest_lat != null && activeTrip?.dest_lng != null
+      ? { latitude: activeTrip.dest_lat, longitude: activeTrip.dest_lng }
+      : null;
+
+  const mode: TravelMode = VALID_MODES.includes(activeTrip?.transport as TravelMode)
+    ? (activeTrip?.transport as TravelMode)
+    : 'walk';
+
+  // Seed the route from the trip row (stored as [lng,lat] pairs).
+  useEffect(() => {
+    if (!liveRoute && activeTrip?.route) {
+      setLiveRoute(activeTrip.route.map(([lng, lat]) => ({ latitude: lat, longitude: lng })));
+    }
+    if (!remaining && activeTrip?.remaining_m != null && activeTrip?.remaining_s != null) {
+      setRemaining({ m: activeTrip.remaining_m, s: activeTrip.remaining_s });
+    }
+  }, [activeTrip?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Compute the actual ETA timestamp from the "HH:MM" string + started_at date
   const etaTimestamp = React.useMemo(() => {
@@ -65,23 +97,49 @@ export function TripActiveScreen() {
     const start = new Date(activeTrip.started_at);
     const eta = new Date(start);
     eta.setHours(h, m, 0, 0);
-    // If ETA is before start (e.g. trip starts 23:50, ETA 00:10), bump to next day
     if (eta.getTime() <= start.getTime()) eta.setDate(eta.getDate() + 1);
     return eta.getTime();
   }, [activeTrip?.eta, activeTrip?.started_at]);
 
-  // Real progress: elapsed time / total trip duration
+  // Progress: prefer live remaining distance over elapsed-time.
   const startMs = activeTrip ? new Date(activeTrip.started_at).getTime() : 0;
-  const pct = etaTimestamp && startMs
-    ? Math.max(0, Math.min(100, ((now - startMs) / (etaTimestamp - startMs)) * 100))
-    : null;
-  const minsRemaining = etaTimestamp ? Math.max(0, Math.round((etaTimestamp - now) / 60_000)) : null;
+  const pct = remaining && activeTrip?.distance_m
+    ? Math.max(0, Math.min(100, ((activeTrip.distance_m - remaining.m) / activeTrip.distance_m) * 100))
+    : etaTimestamp && startMs
+      ? Math.max(0, Math.min(100, ((now - startMs) / (etaTimestamp - startMs)) * 100))
+      : null;
+  const minsRemaining = remaining
+    ? Math.max(0, Math.round(remaining.s / 60))
+    : etaTimestamp
+      ? Math.max(0, Math.round((etaTimestamp - now) / 60_000))
+      : null;
 
   useEffect(() => {
-    // Tick every 5s — fine-grained enough for the progress bar without burning battery
     const id = setInterval(() => setNow(Date.now()), 5000);
     return () => clearInterval(id);
   }, []);
+
+  // Live position watcher — smooth Uber-style marker (independent of presence interval).
+  useEffect(() => {
+    if (!activeTrip) return;
+    let sub: Location.LocationSubscription | null = null;
+    (async () => {
+      try {
+        const { status } = await Location.getForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          const ask = await Location.requestForegroundPermissionsAsync();
+          if (ask.status !== 'granted') return;
+        }
+        sub = await Location.watchPositionAsync(
+          { accuracy: Location.Accuracy.High, timeInterval: 3000, distanceInterval: 5 },
+          (loc) => setLivePos({ latitude: loc.coords.latitude, longitude: loc.coords.longitude }),
+        );
+      } catch {
+        // best-effort
+      }
+    })();
+    return () => { sub?.remove(); };
+  }, [activeTrip?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Battery-aware alert: if the phone gets low during the trip, message the buddy
   // with the last location while there's still charge to send it. Fires once.
@@ -100,11 +158,11 @@ export function TripActiveScreen() {
       } catch {
         // best-effort
       }
-      const pct = Math.round(level * 100);
+      const pctLevel = Math.round(level * 100);
       await supabase.from('messages').insert({
         sender_id: user.id,
         recipient_id: activeTrip.buddy_id,
-        body: `⚠️ My phone battery is low (${pct}%) during my trip to ${activeTrip.destination}. If you lose contact, this is my last known spot.${locLink}`,
+        body: `⚠️ My phone battery is low (${pctLevel}%) during my trip to ${activeTrip.destination}. If you lose contact, this is my last known spot.${locLink}`,
       });
     };
 
@@ -139,8 +197,7 @@ export function TripActiveScreen() {
     nav.replace('AlarmActive');
   }, [activeTrip?.destination, recordAlarm, finish, nav]);
 
-  // When the ETA passes, prompt the user once and start a grace timer. If they
-  // don't confirm they're safe within the grace window, escalate automatically.
+  // When the ETA passes, prompt the user once and start a grace timer.
   useEffect(() => {
     if (!etaTimestamp || etaHandled) return;
     if (now < etaTimestamp) return;
@@ -176,14 +233,38 @@ export function TripActiveScreen() {
     );
   }, [now, etaTimestamp, etaHandled, members, activeTrip?.buddy_id, escalate, finish, nav]);
 
-  // Clear any pending escalation timer if the screen unmounts.
   useEffect(() => {
     return () => {
       if (escalateRef.current) clearTimeout(escalateRef.current);
     };
   }, []);
 
-  // Trip location broadcast at chosen interval
+  /** Arrived at either home or the trip destination → auto check-in. */
+  const checkArrival = useCallback(
+    async (lat: number, lng: number) => {
+      if (arrivedRef.current) return false;
+      const nearHome = home && distanceM(lat, lng, home.lat, home.lng) <= ARRIVAL_RADIUS_M;
+      const nearDest = destCoord && distanceM(lat, lng, destCoord.latitude, destCoord.longitude) <= ARRIVAL_RADIUS_M;
+      if (!nearHome && !nearDest) return false;
+      arrivedRef.current = true;
+      if (escalateRef.current) {
+        clearTimeout(escalateRef.current);
+        escalateRef.current = null;
+      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await recordOk(nearDest ? `Arrived at ${activeTrip?.destination} — auto check-in` : 'Arrived home safe — auto check-in');
+      await finish('arrived');
+      Alert.alert(
+        nearDest ? tr('You made it 🎉') : tr('Welcome home 🏡'),
+        tr("You've arrived safely. Your trip ended and your buddy was notified."),
+      );
+      nav.goBack();
+      return true;
+    },
+    [home, destCoord, recordOk, finish, nav, activeTrip?.destination],
+  );
+
+  // Trip location broadcast at chosen interval + live re-route.
   useEffect(() => {
     if (!activeTrip || !user) return;
     const intervalMs = (activeTrip.location_interval ?? 60) * 1000;
@@ -196,27 +277,32 @@ export function TripActiveScreen() {
           if (ask.status !== 'granted') return;
         }
         const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+        const { latitude, longitude } = loc.coords;
         await supabase.from('presence').upsert(
-          { user_id: user.id, lat: loc.coords.latitude, lng: loc.coords.longitude, updated_at: new Date().toISOString() },
+          { user_id: user.id, lat: latitude, lng: longitude, updated_at: new Date().toISOString() },
           { onConflict: 'user_id' },
         );
         setLastSent(new Date());
         setNextIn(activeTrip.location_interval ?? 60);
 
-        // Geofenced auto check-in: if we've reached the saved home, end the trip
-        // as "arrived" automatically — no tapping needed.
-        if (home && !arrivedHomeRef.current) {
-          const d = distanceM(loc.coords.latitude, loc.coords.longitude, home.lat, home.lng);
-          if (d <= ARRIVAL_RADIUS_M) {
-            arrivedHomeRef.current = true;
-            if (escalateRef.current) {
-              clearTimeout(escalateRef.current);
-              escalateRef.current = null;
-            }
-            await recordOk('Arrived home safe — auto check-in');
-            await finish('arrived');
-            Alert.alert('Welcome home 🏡', "You've arrived safely. Your trip ended and your buddy was notified.");
-            nav.goBack();
+        if (await checkArrival(latitude, longitude)) return;
+
+        // Live re-route: recompute remaining path + ETA from the current position,
+        // store on the trip row so the follower sees it update in realtime.
+        if (destCoord && Date.now() - lastRerouteRef.current >= REROUTE_MIN_MS) {
+          lastRerouteRef.current = Date.now();
+          const r = await getRoute({ latitude, longitude }, destCoord, mode);
+          if (r) {
+            setLiveRoute(r.coords);
+            setRemaining({ m: r.distanceM, s: r.durationS });
+            await supabase
+              .from('trips')
+              .update({
+                remaining_m: r.distanceM,
+                remaining_s: r.durationS,
+                route: r.coords.map((c) => [c.longitude, c.latitude]),
+              })
+              .eq('id', activeTrip.id);
           }
         }
       } catch {
@@ -227,7 +313,6 @@ export function TripActiveScreen() {
     sendLocation();
     timerRef.current = setInterval(sendLocation, intervalMs);
 
-    // Countdown ticker — decrements every second
     countdownRef.current = setInterval(() => {
       setNextIn((n) => (n !== null && n > 0 ? n - 1 : 0));
     }, 1000);
@@ -236,7 +321,7 @@ export function TripActiveScreen() {
       if (timerRef.current) clearInterval(timerRef.current);
       if (countdownRef.current) clearInterval(countdownRef.current);
     };
-  }, [activeTrip?.id, user, home, recordOk, finish, nav]);
+  }, [activeTrip?.id, user, checkArrival]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!loading && !activeTrip) {
@@ -246,33 +331,71 @@ export function TripActiveScreen() {
 
   if (!activeTrip) return null;
   const buddy = members.find((m) => m.profile.id === activeTrip.buddy_id);
+  const hasMap = !!(destCoord || liveRoute || livePos);
 
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.ivoryBg }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 60, paddingHorizontal: 22, paddingBottom: 12 }}>
-        <Pressable
-          onPress={() => nav.goBack()}
-          style={{ padding: 6, marginRight: 6 }}
-          accessibilityLabel="Back"
-        >
-          <IconChevron dir="left" color={t.colors.inkSoft} />
-        </Pressable>
-        <Text variant="large" weight="semibold">
-          Trip in progress
-        </Text>
-      </View>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: t.spacing.pageH, paddingBottom: 32 }}>
-        <View style={{ alignItems: 'center', paddingVertical: 22 }}>
-          <Text style={{ fontSize: 56, lineHeight: 72, paddingTop: 8 }}>{EMOJI[activeTrip.transport ?? 'walk'] ?? '🚶'}</Text>
-          <Eyebrow style={{ marginTop: 12 }}>HEADING TO</Eyebrow>
-          <Text variant="displayH1" style={{ marginTop: 4 }}>
-            {activeTrip.destination}
+      {/* Live map */}
+      {hasMap && (
+        <View style={{ height: 300 }}>
+          <TripMap
+            route={liveRoute}
+            position={livePos}
+            destination={destCoord ? { ...destCoord, label: activeTrip.destination } : null}
+            travelerName={profile?.name ?? 'Me'}
+            travelerPhoto={profile?.avatar_url}
+          />
+          <Pressable
+            onPress={() => nav.goBack()}
+            accessibilityLabel="Back"
+            style={[
+              {
+                position: 'absolute',
+                top: 54,
+                left: 16,
+                width: 40,
+                height: 40,
+                borderRadius: 999,
+                backgroundColor: t.colors.parchment,
+                alignItems: 'center',
+                justifyContent: 'center',
+              },
+              t.shadows.soft,
+            ]}
+          >
+            <IconChevron dir="left" color={t.colors.inkSoft} />
+          </Pressable>
+        </View>
+      )}
+
+      {!hasMap && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 60, paddingHorizontal: 22, paddingBottom: 12 }}>
+          <Pressable onPress={() => nav.goBack()} style={{ padding: 6, marginRight: 6 }} accessibilityLabel="Back">
+            <IconChevron dir="left" color={t.colors.inkSoft} />
+          </Pressable>
+          <Text variant="large" weight="semibold">
+            {tr('Trip in progress')}
           </Text>
-          {activeTrip.eta ? (
-            <Text variant="small" color={t.colors.inkSoft} style={{ marginTop: 4 }}>
-              ETA · {activeTrip.eta}
+        </View>
+      )}
+
+      <ScrollView contentContainerStyle={{ paddingHorizontal: t.spacing.pageH, paddingBottom: 32, paddingTop: hasMap ? 16 : 0 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+          <Text style={{ fontSize: 34, lineHeight: 44 }}>{EMOJI[activeTrip.transport ?? 'walk'] ?? '🚶'}</Text>
+          <View style={{ flex: 1 }}>
+            <Eyebrow>{tr('HEADING TO')}</Eyebrow>
+            <Text style={{ fontFamily: t.type.display, fontSize: 22, lineHeight: 30, paddingTop: 2 }} numberOfLines={1}>
+              {activeTrip.destination}
             </Text>
-          ) : null}
+          </View>
+          {remaining && (
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={{ fontFamily: t.type.display, fontSize: 22, lineHeight: 30, color: t.colors.forest700 }}>
+                {formatDuration(remaining.s)}
+              </Text>
+              <Text variant="meta" color={t.colors.inkMute}>{tr('{dist} left', { dist: formatDistance(remaining.m) })}</Text>
+            </View>
+          )}
         </View>
 
         {pct !== null ? (
@@ -295,17 +418,17 @@ export function TripActiveScreen() {
             </View>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
               <Text variant="meta" color={t.colors.inkMute}>
-                {pct >= 100 ? 'ETA passed' : minsRemaining !== null ? `${minsRemaining} min left` : 'Now'}
+                {minsRemaining !== null ? tr('{m} min left', { m: minsRemaining }) : pct >= 100 ? tr('ETA passed') : tr('Now')}
               </Text>
               <Text variant="meta" color={t.colors.inkMute}>
-                ETA · {activeTrip.eta}
+                ETA · {activeTrip.eta ?? '—'}
               </Text>
             </View>
           </Card>
         ) : (
           <Card style={{ marginBottom: 14 }}>
             <Text variant="meta" color={t.colors.inkMute} style={{ textAlign: 'center' }}>
-              No ETA set — progress will be tracked by your check-ins.
+              {tr('No ETA set — progress will be tracked by your check-ins.')}
             </Text>
           </Card>
         )}
@@ -327,7 +450,7 @@ export function TripActiveScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <Text variant="small" weight="semibold">
-                {lastSent ? 'Location sent' : 'Sending location…'}
+                {lastSent ? tr('Location sent') : tr('Sending location…')}
               </Text>
               <Text variant="meta" color={t.colors.inkMute}>
                 {lastSent
@@ -341,19 +464,19 @@ export function TripActiveScreen() {
 
         {buddy && (
           <Card style={{ marginBottom: 14 }}>
-            <Eyebrow>BUDDY</Eyebrow>
+            <Eyebrow>{tr('BUDDY')}</Eyebrow>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 8 }}>
               <Avatar
-                name={buddy.profile.name ?? buddy.profile.email}
+                name={personName(buddy.profile)}
                 size={44}
                 photoUri={buddy.profile.avatar_url ?? undefined}
               />
               <View style={{ flex: 1 }}>
                 <Text variant="body" weight="semibold">
-                  {buddy.profile.name ?? buddy.profile.email}
+                  {personName(buddy.profile)}
                 </Text>
                 <Text variant="meta" color={t.colors.inkMute}>
-                  {buddy.relation ?? 'Friend'} · notified if you miss ETA
+                  {buddy.relation ?? tr('Friend')} · {tr('sees your live route')}
                 </Text>
               </View>
             </View>
@@ -362,7 +485,10 @@ export function TripActiveScreen() {
 
         <View style={{ backgroundColor: t.colors.gold100, padding: 14, borderRadius: t.radii.md, marginBottom: 22 }}>
           <Text variant="small" color={t.colors.inkSoft}>
-            🌙 You'll get a check-in at {activeTrip.eta ?? 'ETA'}. If you don't respond within 5 minutes, {buddy?.profile.name ?? 'your buddy'} sees your live location.
+            {tr("🌙 You'll get a check-in at {eta}. If you don't respond within 5 minutes, {name} sees your live location.", {
+              eta: activeTrip.eta ?? 'ETA',
+              name: buddy ? personName(buddy.profile) : tr('your buddy'),
+            })}
           </Text>
         </View>
 
@@ -372,27 +498,29 @@ export function TripActiveScreen() {
             size="lg"
             style={{ flex: 1 }}
             onPress={async () => {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               await finish('arrived');
               nav.goBack();
             }}
           >
-            I've arrived
+            {tr("I've arrived")}
           </PillButton>
           <PillButton
             variant="danger"
             size="lg"
             style={{ flex: 1 }}
             onPress={async () => {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
               await finish('escalated');
               nav.navigate('AlarmActive');
             }}
           >
-            🚨  Need help
+            {tr('🚨  Need help')}
           </PillButton>
         </View>
 
         <PillButton variant="ghost" block style={{ marginTop: 8 }} onPress={() => finish('cancelled').then(() => nav.goBack())}>
-          Cancel trip
+          {tr('Cancel trip')}
         </PillButton>
       </ScrollView>
     </View>

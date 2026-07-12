@@ -3,11 +3,13 @@ import { ScrollView, View, Pressable, TextInput, RefreshControl, Alert } from 'r
 import { TopBar, Text, Eyebrow, Card, BottomSheet, PillButton, SectionTitle, Toggle, Avatar } from '../components';
 import { IconChevron, IconPlus, IconShare } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
+import { useT } from '../i18n';
 import { useEvents, DBEvent } from '../hooks/useEvents';
 import { useCircle } from '../hooks/useCircle';
 import { useAuth } from '../state/Auth';
 import { supabase } from '../lib/supabase';
 import { palette } from '../theme/tokens';
+import { personName } from '../lib/person';
 
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 const MONTHS_LONG = [
@@ -33,6 +35,7 @@ function startWeekday(year: number, month0: number) {
 
 export function CalendarScreen() {
   const t = useTheme();
+  const tr = useT();
   const { user } = useAuth();
   const { events, friendEvents, addEvent, removeEvent, refresh } = useEvents();
   const [addOpen, setAddOpen] = useState(false);
@@ -228,7 +231,7 @@ export function CalendarScreen() {
         </View>
 
         <View style={{ paddingHorizontal: t.spacing.pageH, paddingTop: 24 }}>
-          <SectionTitle>Upcoming this month</SectionTitle>
+          <SectionTitle>{tr('Upcoming this month')}</SectionTitle>
           {eventsThisMonth.length === 0 ? (
             <View
               style={{
@@ -241,9 +244,9 @@ export function CalendarScreen() {
               }}
             >
               <Text variant="body" color={t.colors.inkSoft} style={{ textAlign: 'center', marginBottom: 14 }}>
-                No events for {MONTHS_LONG[month0]}.
+                {tr('No events for {month}.', { month: MONTHS_LONG[month0] })}
               </Text>
-              <PillButton onPress={() => setAddOpen(true)}>+ Add event</PillButton>
+              <PillButton onPress={() => setAddOpen(true)}>{tr('+ Add event')}</PillButton>
             </View>
           ) : (
             <View style={{ gap: 10 }}>
@@ -303,7 +306,7 @@ export function CalendarScreen() {
                         }}
                       >
                         <Text variant="eyebrow" weight="semibold" color={t.colors.gold700}>
-                          🛡 CHECK-IN
+                          {tr('🛡 CHECK-IN')}
                         </Text>
                       </View>
                     )}
@@ -311,14 +314,14 @@ export function CalendarScreen() {
                 </Pressable>
               ))}
               <Text variant="meta" color={t.colors.inkMute} style={{ textAlign: 'center', marginTop: 4 }}>
-                Tap to edit · long-press to delete
+                {tr('Tap to edit · long-press to delete')}
               </Text>
             </View>
           )}
 
           {friendEventsThisMonth.length > 0 && (
             <View style={{ marginTop: 24 }}>
-              <SectionTitle>Shared with you</SectionTitle>
+              <SectionTitle>{tr('Shared with you')}</SectionTitle>
               <View style={{ gap: 10 }}>
                 {friendEventsThisMonth.map((e) => (
                   <View
@@ -405,6 +408,7 @@ function EventSheet({
   prefillDate?: string | null;
 }) {
   const t = useTheme();
+  const tr = useT();
   const [title, setTitle] = useState('');
   const [date, setDate] = useState(defaultDate);
   const [time, setTime] = useState('');
@@ -464,26 +468,26 @@ function EventSheet({
   return (
     <BottomSheet visible={open} onClose={onClose}>
       <Text style={{ fontFamily: t.type.display, fontSize: 24, lineHeight: 32, paddingTop: 2, marginBottom: 14 }}>
-        {editing ? 'Edit event' : 'New event'}
+        {editing ? tr('Edit event') : tr('New event')}
       </Text>
-      <Eyebrow style={{ marginBottom: 6 }}>TITLE</Eyebrow>
+      <Eyebrow style={{ marginBottom: 6 }}>{tr('TITLE')}</Eyebrow>
       <TextInput value={title} onChangeText={setTitle} style={input} placeholderTextColor={t.colors.inkMute} placeholder="Girls night" />
-      <Eyebrow style={{ marginBottom: 6 }}>DATE</Eyebrow>
+      <Eyebrow style={{ marginBottom: 6 }}>{tr('DATE')}</Eyebrow>
       <TextInput value={date} onChangeText={setDate} style={input} placeholderTextColor={t.colors.inkMute} placeholder="YYYY-MM-DD" keyboardType="numeric" />
-      <Eyebrow style={{ marginBottom: 6 }}>TIME</Eyebrow>
+      <Eyebrow style={{ marginBottom: 6 }}>{tr('TIME')}</Eyebrow>
       <TextInput value={time} onChangeText={setTime} style={input} placeholderTextColor={t.colors.inkMute} placeholder="HH:MM (optional)" keyboardType="numeric" />
-      <Eyebrow style={{ marginBottom: 6 }}>LOCATION</Eyebrow>
+      <Eyebrow style={{ marginBottom: 6 }}>{tr('LOCATION')}</Eyebrow>
       <TextInput value={location} onChangeText={setLocation} style={input} placeholderTextColor={t.colors.inkMute} placeholder="Stureplan" />
-      <Eyebrow style={{ marginBottom: 6 }}>NOTES</Eyebrow>
+      <Eyebrow style={{ marginBottom: 6 }}>{tr('NOTES')}</Eyebrow>
       <TextInput value={notes} onChangeText={setNotes} multiline style={[input, { minHeight: 70 }]} placeholderTextColor={t.colors.inkMute} placeholder="Optional" />
 
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, paddingHorizontal: 4 }}>
         <View>
           <Text variant="body" weight="semibold">
-            Check-in expected
+            {tr('Check-in expected')}
           </Text>
           <Text variant="meta" color={t.colors.inkMute}>
-            Auto wellness check at end of event
+            {tr('Auto wellness check at end of event')}
           </Text>
         </View>
         <Toggle on={checkIn} onChange={setCheckIn} />
@@ -497,10 +501,10 @@ function EventSheet({
 
       <View style={{ flexDirection: 'row', gap: 8 }}>
         <PillButton variant="ghost" style={{ flex: 1 }} onPress={onClose}>
-          Cancel
+          {tr('Cancel')}
         </PillButton>
         <PillButton style={{ flex: 1 }} onPress={submit} disabled={busy || !title.trim()}>
-          {busy ? 'Saving…' : editing ? 'Save changes' : 'Add'}
+          {busy ? tr('Saving…') : editing ? tr('Save changes') : tr('Add')}
         </PillButton>
       </View>
     </BottomSheet>
@@ -509,6 +513,7 @@ function EventSheet({
 
 function CalendarShareSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const t = useTheme();
+  const tr = useT();
   const { user } = useAuth();
   const { members } = useCircle();
   const [shares, setShares] = useState<Record<string, 'none' | 'checkin' | 'full'>>({});
@@ -539,15 +544,15 @@ function CalendarShareSheet({ open, onClose }: { open: boolean; onClose: () => v
   return (
     <BottomSheet visible={open} onClose={onClose}>
       <Text style={{ fontFamily: t.type.display, fontSize: 24, lineHeight: 32, paddingTop: 2, marginBottom: 6 }}>
-        Share calendar
+        {tr('Share calendar')}
       </Text>
       <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 18 }}>
-        Choose who sees your calendar — and how much. You can change this anytime.
+        {tr('Choose who sees your calendar — and how much. You can change this anytime.')}
       </Text>
 
       {members.length === 0 ? (
         <Text variant="body" color={t.colors.inkSoft}>
-          Add friends first to share your calendar with them.
+          {tr('Add friends first to share your calendar with them.')}
         </Text>
       ) : (
         <View style={{ gap: 10 }}>
@@ -560,22 +565,22 @@ function CalendarShareSheet({ open, onClose }: { open: boolean; onClose: () => v
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 }}>
                   <Avatar
-                    name={m.profile.name ?? m.profile.email}
+                    name={personName(m.profile)}
                     size={40}
                     photoUri={m.profile.avatar_url ?? undefined}
                   />
                   <View style={{ flex: 1 }}>
                     <Text variant="body" weight="semibold">
-                      {m.profile.name ?? m.profile.email}
+                      {personName(m.profile)}
                     </Text>
-                    <Eyebrow color={t.colors.inkMute}>{m.relation ?? 'Friend'}</Eyebrow>
+                    <Eyebrow color={t.colors.inkMute}>{m.relation ?? tr('Friend')}</Eyebrow>
                   </View>
                 </View>
                 <View style={{ flexDirection: 'row', gap: 6 }}>
                   {(['none', 'checkin', 'full'] as const).map((lvl) => {
                     const active = level === lvl;
-                    const label = lvl === 'none' ? 'None' : lvl === 'checkin' ? 'Check-ins' : 'Full';
-                    const sub = lvl === 'none' ? 'Hidden' : lvl === 'checkin' ? 'Time only' : 'All details';
+                    const label = lvl === 'none' ? tr('None') : lvl === 'checkin' ? tr('Check-ins') : tr('Full');
+                    const sub = lvl === 'none' ? tr('Hidden') : lvl === 'checkin' ? tr('Time only') : tr('All details');
                     return (
                       <Pressable
                         key={lvl}
@@ -605,7 +610,7 @@ function CalendarShareSheet({ open, onClose }: { open: boolean; onClose: () => v
       )}
 
       <PillButton block style={{ marginTop: 16 }} onPress={onClose}>
-        Done
+        {tr('Done')}
       </PillButton>
     </BottomSheet>
   );

@@ -1,15 +1,18 @@
 import React, { useState } from 'react';
+import * as Haptics from 'expo-haptics';
 import { ScrollView, View, Pressable, TextInput, ActivityIndicator, Alert, RefreshControl } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { TopBar, Text, Eyebrow, Avatar, Card, PillButton, BottomSheet, Divider } from '../components';
+import { TopBar, Text, Eyebrow, Avatar, Card, PillButton, BottomSheet, Divider, EmptyState } from '../components';
 import { IconPlus, IconChevron, BowArrow } from '../components/icons';
 import { supabase, Profile } from '../lib/supabase';
 import { personName } from '../lib/person';
 import { useTheme } from '../theme/ThemeProvider';
 import { palette } from '../theme/tokens';
+import { useT } from '../i18n';
 import { useCircle } from '../hooks/useCircle';
 import { useCheckIns } from '../hooks/useCheckIns';
+import { usePresence } from '../hooks/usePresence';
 import { useAuth } from '../state/Auth';
 import { RootStackParamList } from '../navigation/types';
 import { CHECKIN_STALE_MS } from '../lib/constants';
@@ -18,8 +21,8 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export function CircleScreen() {
   const t = useTheme();
+  const tr = useT();
   const nav = useNavigation<Nav>();
-  const { signOut } = useAuth();
   const { members, pendingInvites, loading, error, invite, accept, decline, remove, refresh } = useCircle();
   const [refreshing, setRefreshing] = useState(false);
   const onPullRefresh = async () => {
@@ -34,6 +37,7 @@ export function CircleScreen() {
     ]);
   };
   const { latestByUser } = useCheckIns();
+  const { byUser: presenceByUser } = usePresence();
   const [addOpen, setAddOpen] = useState(false);
 
   useFocusEffect(
@@ -50,44 +54,31 @@ export function CircleScreen() {
   };
   const lastSeenFor = (id: string) => {
     const c = latestByUser[id];
-    if (!c) return 'No check-in yet';
+    if (!c) return tr('No check-in yet');
     const ms = Date.now() - new Date(c.created_at).getTime();
     const m = Math.floor(ms / 60000);
-    if (m < 1) return 'Just now';
-    if (m < 60) return `${m} min ago`;
+    if (m < 1) return tr('Just now');
+    if (m < 60) return tr('{m} min ago', { m });
     const h = Math.floor(m / 60);
-    if (h < 24) return `${h} hr ago`;
-    return `${Math.floor(h / 24)}d ago`;
+    if (h < 24) return tr('{h} hr ago', { h });
+    return tr('{d}d ago', { d: Math.floor(h / 24) });
   };
 
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.ivoryBg }}>
       <TopBar
         right={
-          <>
-            <Pressable
-              onPress={signOut}
-              style={[
-                { paddingHorizontal: 12, height: 40, borderRadius: 999, backgroundColor: t.colors.parchment, alignItems: 'center', justifyContent: 'center' },
-                t.shadows.soft,
-              ]}
-            >
-              <Text variant="small" color={t.colors.inkSoft} weight="semibold">
-                Sign out
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setAddOpen(true)}
-              accessibilityRole="button"
-              accessibilityLabel="Add someone to your circle"
-              style={[
-                { width: 40, height: 40, borderRadius: 999, backgroundColor: t.colors.parchment, alignItems: 'center', justifyContent: 'center' },
-                t.shadows.soft,
-              ]}
-            >
-              <IconPlus color={t.colors.inkSoft} />
-            </Pressable>
-          </>
+          <Pressable
+            onPress={() => setAddOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Add someone to your circle"
+            style={[
+              { width: 40, height: 40, borderRadius: 999, backgroundColor: t.colors.parchment, alignItems: 'center', justifyContent: 'center' },
+              t.shadows.soft,
+            ]}
+          >
+            <IconPlus color={t.colors.inkSoft} />
+          </Pressable>
         }
       />
       <ScrollView
@@ -95,9 +86,9 @@ export function CircleScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onPullRefresh} tintColor={t.colors.forest700} />}
       >
         <Text variant="displayH1" style={{ marginBottom: 14 }}>
-          My{' '}
+          {tr('My')}{' '}
           <Text variant="displayH1" italic accent>
-            circle
+            {tr('circle')}
           </Text>
         </Text>
 
@@ -114,17 +105,17 @@ export function CircleScreen() {
             }}
           >
             <Text variant="small" weight="semibold" color={palette.crimson}>
-              Couldn't load your circle
+              {tr("Couldn't load your circle")}
             </Text>
             <Text variant="meta" color={t.colors.inkSoft} style={{ marginTop: 2 }}>
-              {error} · Tap to retry
+              {error} · {tr('Tap to retry')}
             </Text>
           </Pressable>
         )}
 
         {pendingInvites.length > 0 && (
           <View style={{ marginBottom: 16 }}>
-            <Eyebrow style={{ marginBottom: 8 }}>PENDING INVITES</Eyebrow>
+            <Eyebrow style={{ marginBottom: 8 }}>{tr('PENDING INVITES')}</Eyebrow>
             {pendingInvites.map((inv) => (
               <Card key={inv.id} style={{ marginBottom: 10 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 10 }}>
@@ -134,16 +125,16 @@ export function CircleScreen() {
                       {inv.from?.name ?? inv.from?.email ?? 'Someone'}
                     </Text>
                     <Text variant="meta" color={t.colors.inkMute}>
-                      wants to add you to their circle
+                      {tr('wants to add you to their circle')}
                     </Text>
                   </View>
                 </View>
                 <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <PillButton style={{ flex: 1 }} onPress={() => accept(inv)}>
-                    Accept
+                  <PillButton style={{ flex: 1 }} onPress={() => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); accept(inv); }}>
+                    {tr('Accept')}
                   </PillButton>
-                  <PillButton variant="ghost" style={{ flex: 1 }} onPress={() => decline(inv)}>
-                    Decline
+                  <PillButton variant="ghost" style={{ flex: 1 }} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); decline(inv); }}>
+                    {tr('Decline')}
                   </PillButton>
                 </View>
               </Card>
@@ -152,56 +143,74 @@ export function CircleScreen() {
         )}
 
         {loading ? (
-          <ActivityIndicator color={t.colors.forest700} style={{ marginTop: 40 }} />
-        ) : members.length === 0 ? (
-          <View style={{ alignItems: 'center', paddingVertical: 40 }}>
-            <Text variant="body" color={t.colors.inkSoft} style={{ textAlign: 'center', marginBottom: 18 }}>
-              Your circle is empty.
-              {'\n'}Search for someone by their Artemis username to add them.
-            </Text>
-            <PillButton onPress={() => setAddOpen(true)}>+ Add someone</PillButton>
+          <View style={{ gap: 1 }}>
+            {[0, 1, 2].map((i) => (
+              <View key={i} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14, gap: 14 }}>
+                <View style={{ width: 52, height: 52, borderRadius: 999, backgroundColor: t.colors.hairline, opacity: 0.6 }} />
+                <View style={{ flex: 1, gap: 6 }}>
+                  <View style={{ height: 14, width: '55%', borderRadius: 6, backgroundColor: t.colors.hairline, opacity: 0.6 }} />
+                  <View style={{ height: 11, width: '35%', borderRadius: 6, backgroundColor: t.colors.hairline, opacity: 0.4 }} />
+                </View>
+              </View>
+            ))}
           </View>
+        ) : members.length === 0 ? (
+          <EmptyState
+            title={tr('Your circle is waiting')}
+            subtitle={tr('Search for someone by their Artemis username to add them.')}
+            actionLabel={tr('+ Add someone')}
+            onAction={() => setAddOpen(true)}
+          />
         ) : (
           <View style={{ gap: 4 }}>
-            {members.map((m) => (
-              <Pressable
-                key={m.edgeId}
-                onPress={() => nav.navigate('CirclePerson', { id: m.profile.id })}
-                onLongPress={() => confirmRemove(m.edgeId, personName(m.profile))}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  paddingVertical: 14,
-                  gap: 14,
-                  borderBottomWidth: 1,
-                  borderBottomColor: t.colors.hairline,
-                }}
-              >
-                <Avatar
-                  name={personName(m.profile)}
-                  size={52}
-                  status={statusFor(m.profile.id)}
-                  photoUri={m.profile.avatar_url ?? undefined}
-                />
-                <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Text variant="body" weight="semibold">
-                      {personName(m.profile)}
+            {members.map((m) => {
+              const c = latestByUser[m.profile.id];
+              const presence = presenceByUser[m.profile.id];
+              const recentPresence = presence && Date.now() - new Date(presence.updated_at).getTime() < 5 * 60_000;
+              const hoursSince = c ? (Date.now() - new Date(c.created_at).getTime()) / 3_600_000 : null;
+              const safeColor = !c ? t.colors.inkMute : hoursSince! < 8 ? '#2e7d47' : hoursSince! < 48 ? '#c07c1e' : palette.crimson;
+              const battery = presence?.battery_level;
+              const batteryText = battery != null ? ` · 🔋${Math.round(battery * 100)}%` : '';
+              return (
+                <Pressable
+                  key={m.edgeId}
+                  onPress={() => nav.navigate('CirclePerson', { id: m.profile.id })}
+                  onLongPress={() => confirmRemove(m.edgeId, personName(m.profile))}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingVertical: 14,
+                    gap: 14,
+                    borderBottomWidth: 1,
+                    borderBottomColor: t.colors.hairline,
+                  }}
+                >
+                  <Avatar
+                    name={personName(m.profile)}
+                    size={52}
+                    status={statusFor(m.profile.id)}
+                    photoUri={m.profile.avatar_url ?? undefined}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text variant="body" weight="semibold">
+                        {personName(m.profile)}
+                      </Text>
+                      {m.verified && <BowArrow size={12} />}
+                    </View>
+                    {m.relation && (
+                      <Eyebrow color={t.colors.gold700} style={{ marginTop: 2 }}>
+                        {m.relation}
+                      </Eyebrow>
+                    )}
+                    <Text variant="meta" color={safeColor} style={{ marginTop: 2 }}>
+                      {recentPresence ? tr('Active now') : lastSeenFor(m.profile.id)}{batteryText}
                     </Text>
-                    {m.verified && <BowArrow size={12} />}
                   </View>
-                  {m.relation && (
-                    <Eyebrow color={t.colors.gold700} style={{ marginTop: 2 }}>
-                      {m.relation}
-                    </Eyebrow>
-                  )}
-                  <Text variant="meta" color={t.colors.inkMute} style={{ marginTop: 2 }}>
-                    {lastSeenFor(m.profile.id)}
-                  </Text>
-                </View>
-                <IconChevron color={t.colors.inkMute} />
-              </Pressable>
-            ))}
+                  <IconChevron color={t.colors.inkMute} />
+                </Pressable>
+              );
+            })}
           </View>
         )}
 
@@ -218,7 +227,7 @@ export function CircleScreen() {
           }}
         >
           <Text variant="body" color={t.colors.inkSoft}>
-            + Invite someone
+            {tr('+ Invite someone')}
           </Text>
         </Pressable>
       </ScrollView>
@@ -238,6 +247,7 @@ function InviteSheet({
   onSubmit: (email: string, relation: string | null) => Promise<{ error?: string }>;
 }) {
   const t = useTheme();
+  const tr = useT();
   const { user } = useAuth();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Profile[]>([]);
@@ -297,12 +307,12 @@ function InviteSheet({
 
   return (
     <BottomSheet visible={open} onClose={handleClose}>
-      <Text style={{ fontFamily: t.type.display, fontSize: 24, marginBottom: 4 }}>Add to circle</Text>
+      <Text style={{ fontFamily: t.type.display, fontSize: 24, marginBottom: 4 }}>{tr('Add to circle')}</Text>
       <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 16 }}>
-        Search by username or name. They'll get a notification and can accept your invite.
+        {tr("Search by username or name. They'll get a notification and can accept your invite.")}
       </Text>
 
-      <Eyebrow style={{ marginBottom: 6 }}>FIND BY USERNAME</Eyebrow>
+      <Eyebrow style={{ marginBottom: 6 }}>{tr('FIND BY USERNAME')}</Eyebrow>
 
       {selected ? (
         /* Confirmed person chip */
@@ -368,7 +378,7 @@ function InviteSheet({
                         <Text variant="meta" color={t.colors.inkMute}>@{p.username}</Text>
                       )}
                     </View>
-                    <Text variant="small" color={t.colors.gold700} weight="semibold">Add</Text>
+                    <Text variant="small" color={t.colors.gold700} weight="semibold">{tr('Add')}</Text>
                   </Pressable>
                   {i < results.length - 1 && <Divider />}
                 </View>
@@ -378,13 +388,13 @@ function InviteSheet({
 
           {query.trim().length > 1 && results.length === 0 && !searching && (
             <Text variant="small" color={t.colors.inkMute} style={{ marginBottom: 10 }}>
-              No users found. Make sure you have their exact username.
+              {tr('No users found. Make sure you have their exact username.')}
             </Text>
           )}
         </>
       )}
 
-      <Eyebrow style={{ marginBottom: 6, marginTop: 4 }}>RELATION (OPTIONAL)</Eyebrow>
+      <Eyebrow style={{ marginBottom: 6, marginTop: 4 }}>{tr('RELATION (OPTIONAL)')}</Eyebrow>
       <TextInput
         value={relation}
         onChangeText={setRelation}
@@ -407,16 +417,16 @@ function InviteSheet({
       )}
       {done && (
         <Text variant="small" color={t.colors.statusOk} style={{ marginBottom: 10 }}>
-          Invite sent — they'll see it in their notifications ✓
+          {tr("Invite sent — they'll see it in their notifications ✓")}
         </Text>
       )}
 
       <View style={{ flexDirection: 'row', gap: 8 }}>
         <PillButton variant="ghost" style={{ flex: 1 }} onPress={handleClose} disabled={busy}>
-          Cancel
+          {tr('Cancel')}
         </PillButton>
         <PillButton style={{ flex: 1 }} onPress={submit} disabled={busy || !selected}>
-          {busy ? 'Sending…' : 'Send invite'}
+          {busy ? tr('Sending…') : tr('Send invite')}
         </PillButton>
       </View>
     </BottomSheet>

@@ -6,7 +6,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Text, Eyebrow, PillButton, BottomSheet, Toggle } from '../components';
+import { Text, Eyebrow, PillButton, BottomSheet, Toggle, Avatar } from '../components';
 import { RootStackParamList } from '../navigation/types';
 import { ArtemisMark, IconLocate, IconWarn } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
@@ -14,8 +14,31 @@ import { useReports, DBReport } from '../hooks/useReports';
 import { useAuth } from '../state/Auth';
 import { useCircle } from '../hooks/useCircle';
 import { usePresence } from '../hooks/usePresence';
+import { supabase } from '../lib/supabase';
+import { CheckIn } from '../hooks/useCheckIns';
 import { ReportKind } from '../data/demo';
 import { palette } from '../theme/tokens';
+import { personName } from '../lib/person';
+
+function timeAgo(iso: string): string {
+  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+function checkInOccasion(ck: CheckIn): string {
+  const ago = timeAgo(ck.created_at);
+  switch (ck.kind) {
+    case 'alarm': return `🚨 Raised an alarm ${ago}`;
+    case 'ok': return `✅ Checked in as OK ${ago}`;
+    case 'wellness_request': return `Sent a wellness check ${ago}`;
+    case 'wellness_response':
+      return ck.note === 'need_help' ? `⚠️ Needed help ${ago}` : `Responded to a check ${ago}`;
+  }
+}
 
 const REPORT_HEX: Record<ReportKind, string> = {
   yellow: '#D4A933',
@@ -88,6 +111,22 @@ export function MapScreen() {
   const [showLayer, setShowLayer] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // Member pin detail
+  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+  const [memberCheckIn, setMemberCheckIn] = useState<CheckIn | null>(null);
+
+  useEffect(() => {
+    if (!selectedMemberId) { setMemberCheckIn(null); return; }
+    supabase
+      .from('check_ins')
+      .select('*')
+      .eq('user_id', selectedMemberId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single()
+      .then(({ data }) => setMemberCheckIn((data as CheckIn) ?? null));
+  }, [selectedMemberId]);
+
   // Location picking mode
   const [pickingLocation, setPickingLocation] = useState(false);
   const [pickedCenter, setPickedCenter] = useState<LatLng | null>(null);
@@ -115,7 +154,7 @@ export function MapScreen() {
         const stale = Date.now() - new Date(p.updated_at).getTime() > 5 * 60_000;
         return {
           id: m.profile.id,
-          name: m.profile.name ?? m.profile.email,
+          name: personName(m.profile),
           avatar: m.profile.avatar_url,
           lat: p.lat,
           lng: p.lng,
@@ -279,7 +318,7 @@ export function MapScreen() {
                 coordinate={{ latitude: p.lat, longitude: p.lng }}
                 anchor={{ x: 0.5, y: 1 }}
                 tracksViewChanges={false}
-                onPress={() => nav.navigate('CirclePerson', { id: p.id })}
+                onPress={() => setSelectedMemberId(p.id)}
               >
                 <View style={{ alignItems: 'center', opacity: p.stale ? 0.55 : 1 }}>
                   {p.stale && (
@@ -640,6 +679,108 @@ export function MapScreen() {
           </Text>
         </Pressable>
       )}
+
+      {/* Member pin detail sheet */}
+      {(() => {
+        const mc = selectedMemberId ? circleCoords.find((c) => c.id === selectedMemberId) : null;
+        const mf = selectedMemberId ? members.find((m) => m.profile.id === selectedMemberId) : null;
+        return (
+          <BottomSheet visible={!!mc} onClose={() => setSelectedMemberId(null)}>
+            {mc && (
+              <View>
+                {/* Header: avatar + name + relation */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 14 }}>
+                  <Avatar
+                    name={mc.name}
+                    size={52}
+                    photoUri={mc.avatar ?? undefined}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text variant="body" weight="semibold" style={{ marginBottom: 1 }}>
+                      {mc.name}
+                    </Text>
+                    {mf?.relation && (
+                      <Text variant="meta" color={t.colors.inkMute} style={{ textTransform: 'capitalize' }}>
+                        {mf.relation}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+
+                {/* Location row */}
+                <View
+                  style={{
+                    backgroundColor: t.colors.moonlight,
+                    borderRadius: t.radii.md,
+                    padding: 12,
+                    marginBottom: 10,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 10,
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 4,
+                      backgroundColor: mc.stale ? t.colors.inkMute : palette.statusOk,
+                    }}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text variant="small" weight="semibold">
+                      {mc.stale ? 'Last known location' : 'Sharing live location'}
+                    </Text>
+                    <Text variant="meta" color={t.colors.inkMute}>
+                      {timeAgo(mc.updatedAt)}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Check-in occasion */}
+                {memberCheckIn && (
+                  <View
+                    style={{
+                      backgroundColor: t.colors.moonlight,
+                      borderRadius: t.radii.md,
+                      padding: 12,
+                      marginBottom: 14,
+                    }}
+                  >
+                    <Eyebrow style={{ marginBottom: 4 }}>LATEST ACTIVITY</Eyebrow>
+                    <Text variant="small" color={t.colors.inkSoft}>
+                      {checkInOccasion(memberCheckIn)}
+                    </Text>
+                  </View>
+                )}
+
+                {/* Actions */}
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <PillButton
+                    variant="ghost"
+                    style={{ flex: 1 }}
+                    onPress={() => {
+                      setSelectedMemberId(null);
+                      nav.navigate('CirclePerson', { id: mc.id });
+                    }}
+                  >
+                    View profile
+                  </PillButton>
+                  <PillButton
+                    style={{ flex: 1 }}
+                    onPress={() => {
+                      setSelectedMemberId(null);
+                      nav.navigate('CirclePerson', { id: mc.id });
+                    }}
+                  >
+                    Check in
+                  </PillButton>
+                </View>
+              </View>
+            )}
+          </BottomSheet>
+        );
+      })()}
 
       {/* Selected report detail sheet */}
       <BottomSheet visible={!!selected} onClose={() => setSelected(null)}>

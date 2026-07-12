@@ -10,24 +10,31 @@
     "icon": "./assets/icon-1024.png",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.artemis.app",
+      "bundleIdentifier": "se.embelstudio.artemis",
       "icon": "./assets/icon-1024.png",
       "usesAppleSignIn": true,
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Artemis shares your live location with your safety circle while you choose to, and shows nearby community safety reports.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Artemis continues sharing your location with your safety circle even when the app is in the background, so your circle can always reach you in an emergency.",
+        "NSLocationAlwaysUsageDescription": "Artemis continues sharing your location with your safety circle even when the app is in the background, so your circle can always reach you in an emergency.",
+        "UIBackgroundModes": ["location", "fetch"],
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
-      "package": "com.artemis.app",
+      "package": "se.embelstudio.artemis",
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon-1024.png",
         "backgroundColor": "#3A1F4A"
       },
       "permissions": [
-        "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION"
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION"
       ]
     },
     "plugins": [
@@ -63,6 +70,12 @@
       ],
       "expo-apple-authentication",
       "expo-web-browser"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "b28a3563-3015-4f10-9bc0-75610da26d85"
+      }
+    },
+    "owner": "malcolmsav"
   }
 }
