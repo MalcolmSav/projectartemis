@@ -1,6 +1,19 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { Linking } from 'react-native';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase, Profile } from '../lib/supabase';
+
+/** Parse Supabase auth tokens out of a deep link like
+ *  artemis://reset-password#access_token=…&refresh_token=…&type=recovery */
+function parseAuthFragment(url: string): { access_token: string; refresh_token: string; type: string | null } | null {
+  const hashIdx = url.indexOf('#');
+  if (hashIdx === -1) return null;
+  const params = new URLSearchParams(url.slice(hashIdx + 1));
+  const access_token = params.get('access_token');
+  const refresh_token = params.get('refresh_token');
+  if (!access_token || !refresh_token) return null;
+  return { access_token, refresh_token, type: params.get('type') };
+}
 
 interface AuthValue {
   loading: boolean;
@@ -35,11 +48,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s);
       if (event === 'PASSWORD_RECOVERY') setIsRecovery(true);
-      else setIsRecovery(false);
+      else if (event === 'SIGNED_OUT') setIsRecovery(false);
     });
     return () => {
       sub.subscription.unsubscribe();
     };
+  }, []);
+
+  // Deep link handler: the password-reset email redirects to
+  // artemis://reset-password#access_token=…&type=recovery. Exchange the tokens
+  // for a session, then show the ResetPasswordScreen via isRecovery.
+  useEffect(() => {
+    const handleUrl = async (url: string | null) => {
+      if (!url) return;
+      const tokens = parseAuthFragment(url);
+      if (!tokens) return;
+      const { error } = await supabase.auth.setSession({
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+      });
+      if (!error && tokens.type === 'recovery') setIsRecovery(true);
+    };
+    Linking.getInitialURL().then(handleUrl);
+    const sub = Linking.addEventListener('url', ({ url }) => handleUrl(url));
+    return () => sub.remove();
   }, []);
 
   const userId = session?.user.id;

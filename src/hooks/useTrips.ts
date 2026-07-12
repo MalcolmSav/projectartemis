@@ -13,6 +13,14 @@ export interface Trip {
   started_at: string;
   ended_at: string | null;
   status: 'active' | 'arrived' | 'cancelled' | 'escalated';
+  // Routing (nullable for legacy trips without a geocoded destination)
+  dest_lat: number | null;
+  dest_lng: number | null;
+  route: [number, number][] | null; // [lng, lat] pairs
+  distance_m: number | null;
+  duration_s: number | null;
+  remaining_m: number | null; // live, updated by the traveler
+  remaining_s: number | null; // live, updated by the traveler
 }
 
 export function useTrips() {
@@ -48,7 +56,18 @@ export function useTrips() {
   }, [user, refresh]);
 
   const start = useCallback(
-    async (t: { destination: string; eta?: string; buddyId?: string | null; transport?: string; locationInterval?: number }) => {
+    async (t: {
+      destination: string;
+      eta?: string;
+      buddyId?: string | null;
+      transport?: string;
+      locationInterval?: number;
+      destLat?: number;
+      destLng?: number;
+      route?: [number, number][];
+      distanceM?: number;
+      durationS?: number;
+    }) => {
       if (!user) return { error: 'Not signed in' };
       const { data, error } = await supabase
         .from('trips')
@@ -59,6 +78,13 @@ export function useTrips() {
           buddy_id: t.buddyId ?? null,
           transport: t.transport ?? null,
           location_interval: t.locationInterval ?? 60,
+          dest_lat: t.destLat ?? null,
+          dest_lng: t.destLng ?? null,
+          route: t.route ?? null,
+          distance_m: t.distanceM ?? null,
+          duration_s: t.durationS ?? null,
+          remaining_m: t.distanceM ?? null,
+          remaining_s: t.durationS ?? null,
         })
         .select()
         .single();

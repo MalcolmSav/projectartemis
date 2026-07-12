@@ -9,6 +9,7 @@ import { Text, Eyebrow, Avatar, Card, PillButton, Divider, Row } from '../compon
 import { useCircle } from '../hooks/useCircle';
 import { IconChevron, IconPhone, IconMessage, IconShield, BowArrow } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
+import { useT } from '../i18n';
 import { palette } from '../theme/tokens';
 import { supabase, Profile } from '../lib/supabase';
 import { RootStackParamList } from '../navigation/types';
@@ -22,6 +23,7 @@ interface RecentCheckIn {
 
 export function CirclePersonScreen() {
   const t = useTheme();
+  const tr = useT();
   const nav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<RootStackParamList, 'CirclePerson'>>();
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -65,7 +67,7 @@ export function CirclePersonScreen() {
   if (!profile) {
     return (
       <View style={{ flex: 1, backgroundColor: t.colors.ivoryBg, padding: t.spacing.pageH, paddingTop: 80 }}>
-        <Text variant="body">Profile not found.</Text>
+        <Text variant="body">{tr('Profile not found.')}</Text>
       </View>
     );
   }
@@ -102,7 +104,7 @@ export function CirclePersonScreen() {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
             <BowArrow size={14} />
             <Text variant="small" color={t.colors.gold700}>
-              Verified circle member
+              {tr('Verified circle member')}
             </Text>
           </View>
         </View>
@@ -181,13 +183,13 @@ export function CirclePersonScreen() {
 
         {activity.length > 0 && (
           <>
-            <Eyebrow style={{ marginTop: 22, marginBottom: 8 }}>RECENT ACTIVITY</Eyebrow>
+            <Eyebrow style={{ marginTop: 22, marginBottom: 8 }}>{tr('RECENT ACTIVITY')}</Eyebrow>
             <Card>
               {activity.map((c, i) => (
                 <View key={c.id}>
                   <View style={{ paddingVertical: 8 }}>
                     <Text variant="body" weight="semibold">
-                      {labelFor(c.kind)}
+                      {labelFor(c.kind, tr)}
                     </Text>
                     <Text variant="meta" color={t.colors.inkMute}>
                       {new Date(c.created_at).toLocaleString()}
@@ -233,7 +235,7 @@ export function CirclePersonScreen() {
               style={{ marginTop: 28, marginBottom: 8, alignItems: 'center', opacity: removing ? 0.5 : 1 }}
             >
               <Text variant="small" weight="semibold" color={t.colors.crimson}>
-                {removing ? 'Removing…' : `Remove ${displayName} from circle`}
+                {removing ? tr('Removing…') : tr('Remove {name} from circle', { name: displayName })}
               </Text>
             </Pressable>
           );
@@ -243,11 +245,11 @@ export function CirclePersonScreen() {
   );
 }
 
-function labelFor(kind: RecentCheckIn['kind']) {
+function labelFor(kind: RecentCheckIn['kind'], tr: (k: string) => string) {
   switch (kind) {
-    case 'ok': return '✅ Checked in OK';
-    case 'wellness_request': return '🏹 Sent a wellness check';
-    case 'wellness_response': return '💬 Responded to a wellness check';
-    case 'alarm': return '🚨 Triggered an alarm';
+    case 'ok': return tr('✅ Checked in OK');
+    case 'wellness_request': return tr('🏹 Sent a wellness check');
+    case 'wellness_response': return tr('💬 Responded to a wellness check');
+    case 'alarm': return tr('🚨 Triggered an alarm');
   }
 }

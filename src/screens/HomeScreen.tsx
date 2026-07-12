@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import * as Haptics from 'expo-haptics';
 import { Alert, ScrollView, View, Pressable, RefreshControl } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -41,23 +42,24 @@ import { useCircle } from '../hooks/useCircle';
 import { useCheckIns } from '../hooks/useCheckIns';
 import { useSafetyTimer } from '../hooks/useSafetyTimer';
 import { useFollowedTrips } from '../hooks/useFollowedTrips';
-import { useT } from '../i18n';
+import { useT, TFn } from '../i18n';
 import { personName } from '../lib/person';
 import { useConversations } from '../hooks/useConversations';
 import { usePresence } from '../hooks/usePresence';
+import { useStreak } from '../hooks/useStreak';
 import { useAuth } from '../state/Auth';
 import { RootStackParamList } from '../navigation/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-function relativeTime(iso: string) {
+function relativeTime(iso: string, tr: TFn) {
   const ms = Date.now() - new Date(iso).getTime();
   const m = Math.floor(ms / 60000);
-  if (m < 1) return 'just now';
-  if (m < 60) return `${m} min ago`;
+  if (m < 1) return tr('just now');
+  if (m < 60) return tr('{m} min ago', { m });
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h} hr ago`;
-  return `${Math.floor(h / 24)}d ago`;
+  if (h < 24) return tr('{h} hr ago', { h });
+  return tr('{d}d ago', { d: Math.floor(h / 24) });
 }
 
 function greeting() {
@@ -86,6 +88,7 @@ export function HomeScreen() {
   const { byUser: presenceByUser } = usePresence();
   const { expiresAt: timerExpiresAt, expired: timerExpired, start: startTimer, clear: clearTimer } = useSafetyTimer();
   const { trips: followedTrips } = useFollowedTrips();
+  const streak = useStreak();
   const [safetyOpen, setSafetyOpen] = useState(false);
   const [nowTick, setNowTick] = useState(Date.now());
   const timerFiredRef = React.useRef(false);
@@ -129,6 +132,7 @@ export function HomeScreen() {
     nav.navigate('WellnessIncoming', {
       fromName: pendingForMe.from?.name ?? pendingForMe.from?.email ?? 'Someone',
       fromId: pendingForMe.user_id,
+      checkInId: pendingForMe.id,
     });
   }, [pendingForMe]);
 
@@ -194,13 +198,14 @@ export function HomeScreen() {
     );
   }, [friendAlarm]);
 
-  const lastOkLabel = myLastOkAt ? relativeTime(myLastOkAt) : tr('no check-in yet');
+  const lastOkLabel = myLastOkAt ? relativeTime(myLastOkAt, tr) : tr('no check-in yet');
 
   const pulseScale = useSharedValue(0.5);
   const pulseOpacity = useSharedValue(0);
 
   const handleOk = async () => {
     setOkSent(true);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     pulseScale.value = 0.5;
     pulseOpacity.value = 0.9;
     pulseScale.value = withTiming(1.6, { duration: t.motion.okPulse, easing: Easing.out(Easing.ease) });
@@ -328,6 +333,7 @@ export function HomeScreen() {
                 await respondWellness('wellness_response', 'need_help', pendingForMe.user_id);
               }}
               onAlarm={async () => {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
                 await recordAlarm('Manual alarm from wellness response');
                 nav.navigate('AlarmActive');
               }}
@@ -336,6 +342,7 @@ export function HomeScreen() {
           ) : (
             <SendHero
               lastOkLabel={lastOkLabel}
+              streak={streak}
               onOpen={() => {
                 if (members.length === 0) {
                   nav.navigate('Tabs' as any, { screen: 'Circle' } as any);
@@ -483,10 +490,10 @@ export function HomeScreen() {
                     ? 'ok'
                     : 'warn';
               const lastSeenText = recentPresence
-                ? 'Active now'
+                ? tr('Active now')
                 : last
-                  ? relativeTime(last.created_at)
-                  : 'no check-in';
+                  ? relativeTime(last.created_at, tr)
+                  : tr('no check-in');
               return (
                 <CircleCard
                   key={m.edgeId}
@@ -494,7 +501,7 @@ export function HomeScreen() {
                   person={{
                     id: m.profile.id,
                     name: personName(m.profile),
-                    relation: m.relation ?? 'Friend',
+                    relation: m.relation ?? tr('Friend'),
                     lastSeen: lastSeenText,
                     lastLocation: '—',
                     status,
@@ -513,7 +520,19 @@ export function HomeScreen() {
 
         {/* Quick actions */}
         <View style={{ paddingHorizontal: t.spacing.pageH, paddingTop: 20 }}>
-          <SectionTitle>{tr('Right now')}</SectionTitle>
+          <SectionTitle
+            right={
+              <Pressable
+                onPress={() => nav.navigate('Activity')}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+              >
+                <Text variant="small" color={t.colors.inkSoft}>{tr('Activity')}</Text>
+                <IconChevron size={12} color={t.colors.inkSoft} />
+              </Pressable>
+            }
+          >
+            {tr('Right now')}
+          </SectionTitle>
           <View style={{ gap: 10 }}>
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <QuickAction
@@ -590,6 +609,7 @@ export function HomeScreen() {
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
         onPick={async (friendId) => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
           await sendWellnessRequest(friendId);
           setPickerOpen(false);
         }}
@@ -795,6 +815,7 @@ function NotificationsSheet({
   onOpenCircle: () => void;
 }) {
   const t = useTheme();
+  const tr = useT();
   const { pendingInvites } = useCircle();
   const { pendingForMe, sentChecks } = useCheckIns();
   const empty = pendingInvites.length === 0 && !pendingForMe && sentChecks.length === 0;
@@ -802,20 +823,20 @@ function NotificationsSheet({
   const statusFor = (s: (typeof sentChecks)[number]['status']) => {
     switch (s) {
       case 'ok':
-        return { label: '✓ All good', color: palette.statusOk };
+        return { label: tr('✓ All good'), color: palette.statusOk };
       case 'need_help':
-        return { label: '⚠️ Needs help', color: palette.statusWarn };
+        return { label: tr('⚠️ Needs help'), color: palette.statusWarn };
       case 'alarm':
-        return { label: '🚨 Alarm', color: palette.crimson };
+        return { label: tr('🚨 Alarm'), color: palette.crimson };
       default:
-        return { label: 'Awaiting reply', color: t.colors.inkMute };
+        return { label: tr('Awaiting reply'), color: t.colors.inkMute };
     }
   };
 
   return (
     <BottomSheet visible={open} onClose={onClose}>
       <Text style={{ fontFamily: t.type.display, fontSize: 24, lineHeight: 32, paddingTop: 2, marginBottom: 6 }}>
-        Notifications
+        {tr('Notifications')}
       </Text>
 
       {empty ? (
@@ -834,7 +855,7 @@ function NotificationsSheet({
             <IconBell color={t.colors.inkMute} />
           </View>
           <Text variant="body" color={t.colors.inkSoft} style={{ textAlign: 'center' }}>
-            All quiet.{'\n'}You'll see invites and wellness checks here.
+            {tr("All quiet.\nYou'll see invites and wellness checks here.")}
           </Text>
         </View>
       ) : (
@@ -843,12 +864,12 @@ function NotificationsSheet({
             <View
               style={{ backgroundColor: t.colors.gold100, borderRadius: t.radii.md, padding: 14, gap: 6 }}
             >
-              <Eyebrow color={t.colors.gold700}>WELLNESS CHECK</Eyebrow>
+              <Eyebrow color={t.colors.gold700}>{tr('WELLNESS CHECK')}</Eyebrow>
               <Text variant="body" weight="semibold">
-                {pendingForMe.from?.name ?? pendingForMe.from?.email ?? 'Someone'} is checking in on you.
+                {tr('{name} is checking in on you.', { name: pendingForMe.from?.name ?? pendingForMe.from?.email ?? 'Someone' })}
               </Text>
               <Text variant="meta" color={t.colors.inkSoft}>
-                Respond from the Home card.
+                {tr('Respond from the Home card.')}
               </Text>
             </View>
           )}
@@ -875,7 +896,7 @@ function NotificationsSheet({
                   {inv.from?.name ?? inv.from?.email ?? 'Someone'}
                 </Text>
                 <Text variant="meta" color={t.colors.inkMute}>
-                  wants to add you to their circle
+                  {tr('wants to add you to their circle')}
                 </Text>
               </View>
               <IconChevron color={t.colors.inkMute} />
@@ -884,7 +905,7 @@ function NotificationsSheet({
 
           {sentChecks.length > 0 && (
             <>
-              <Eyebrow style={{ marginTop: 6, marginBottom: 2 }}>CHECKS YOU SENT</Eyebrow>
+              <Eyebrow style={{ marginTop: 6, marginBottom: 2 }}>{tr('CHECKS YOU SENT')}</Eyebrow>
               {sentChecks.map((sc) => {
                 const st = statusFor(sc.status);
                 const name = personName(sc.to);
@@ -906,7 +927,10 @@ function NotificationsSheet({
                         {name}
                       </Text>
                       <Text variant="meta" color={t.colors.inkMute}>
-                        You checked in · {relativeTime(sc.createdAt)}
+                        {tr('You checked in · {time}', { time: relativeTime(sc.createdAt, tr) })}
+                        {sc.seenAt && sc.status === 'pending'
+                          ? `  ·  👁 ${relativeTime(sc.seenAt, tr)}`
+                          : ''}
                       </Text>
                     </View>
                     <Text variant="small" weight="semibold" color={st.color}>
@@ -921,7 +945,7 @@ function NotificationsSheet({
       )}
 
       <PillButton variant="ghost" block style={{ marginTop: 14 }} onPress={onClose}>
-        Close
+        {tr('Close')}
       </PillButton>
     </BottomSheet>
   );
@@ -931,10 +955,12 @@ function SendHero({
   lastOkLabel,
   onOpen,
   hasFriends,
+  streak,
 }: {
   lastOkLabel: string;
   onOpen: () => void;
   hasFriends: boolean;
+  streak: number;
 }) {
   const t = useTheme();
   const tr = useT();
@@ -946,6 +972,11 @@ function SendHero({
           <Text style={{ fontFamily: t.type.display, fontSize: 18, lineHeight: 26, paddingTop: 2 }}>
             {lastOkLabel}
           </Text>
+          {streak >= 2 && (
+            <Text variant="meta" color={t.colors.gold700} style={{ marginTop: 2 }}>
+              🔥 {streak} {tr('day streak')}
+            </Text>
+          )}
         </View>
         <StatusPill status="ok" label={tr('All clear')} />
       </View>
@@ -983,15 +1014,16 @@ function PendingHero({
   pulseStyle: any;
 }) {
   const t = useTheme();
+  const tr = useT();
   return (
     <Card>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 }}>
         <Avatar name={fromName} size={44} photoUri={fromAvatar} />
         <View style={{ flex: 1 }}>
-          <Eyebrow color={t.colors.gold700}>WELLNESS CHECK 🏹</Eyebrow>
+          <Eyebrow color={t.colors.gold700}>{tr('WELLNESS CHECK 🏹')}</Eyebrow>
           <Text style={{ fontFamily: t.type.display, fontSize: 18, lineHeight: 26, paddingTop: 2 }}>
-            <Text style={{ fontFamily: t.type.displayItalic, color: t.colors.forest700 }}>{fromName}</Text> is
-            checking in on you.
+            <Text style={{ fontFamily: t.type.displayItalic, color: t.colors.forest700 }}>{fromName}</Text>{' '}
+            {tr('is checking in on you.')}
           </Text>
         </View>
       </View>
@@ -1036,7 +1068,7 @@ function PendingHero({
                 color: palette.gold300,
               }}
             >
-              {okSent ? 'Sent to circle' : "I'm OK 🌙"}
+              {okSent ? tr('Sent to circle') : tr("I'm OK 🌙")}
             </Text>
           </LinearGradient>
         </Pressable>
@@ -1049,10 +1081,10 @@ function PendingHero({
         style={{ marginTop: 10, backgroundColor: '#FFF8E1' }}
         onPress={onNeedHelp}
       >
-        ⚠️  I need help · let {fromName} know
+        {tr('⚠️  I need help · let {name} know', { name: fromName })}
       </PillButton>
       <PillButton variant="danger" size="lg" block style={{ marginTop: 8 }} onPress={onAlarm}>
-        🚨  ALARM · alert entire circle
+        {tr('🚨  ALARM · alert entire circle')}
       </PillButton>
     </Card>
   );
@@ -1068,14 +1100,15 @@ function FriendPickerSheet({
   onPick: (friendId: string) => void;
 }) {
   const t = useTheme();
+  const tr = useT();
   const { members } = useCircle();
   return (
     <BottomSheet visible={open} onClose={onClose}>
       <Text style={{ fontFamily: t.type.display, fontSize: 24, lineHeight: 32, paddingTop: 2, marginBottom: 6 }}>
-        Send wellness check
+        {tr('Send wellness check')}
       </Text>
       <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 16 }}>
-        Pick a friend. They'll see the prompt and have 30 minutes to respond.
+        {tr("Pick a friend. They'll see the prompt and have 30 minutes to respond.")}
       </Text>
 
       <View style={{ gap: 8 }}>
@@ -1113,7 +1146,7 @@ function FriendPickerSheet({
       </View>
 
       <PillButton variant="ghost" block style={{ marginTop: 14 }} onPress={onClose}>
-        Cancel
+        {tr('Cancel')}
       </PillButton>
     </BottomSheet>
   );

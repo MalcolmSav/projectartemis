@@ -10,9 +10,10 @@ export type RootStackParamList = {
   FakeCall: undefined;
   FakeCallIncoming: undefined;
   FakeCallOnCall: undefined;
-  WellnessIncoming: { fromName?: string; fromId?: string } | undefined;
+  WellnessIncoming: { fromName?: string; fromId?: string; checkInId?: string } | undefined;
   AlarmActive: undefined;
   EmergencyCall: undefined;
+  Activity: undefined;
 };
 
 declare global {

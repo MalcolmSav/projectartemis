@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import * as Haptics from 'expo-haptics';
 import { View, Pressable } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -14,6 +15,7 @@ import { Text, Eyebrow, PillButton } from '../components';
 import { IconChevron } from '../components/icons';
 import { palette } from '../theme/tokens';
 import { useCheckIns } from '../hooks/useCheckIns';
+import { supabase } from '../lib/supabase';
 import { useT } from '../i18n';
 import { RootStackParamList } from '../navigation/types';
 
@@ -28,12 +30,15 @@ export function WellnessIncomingScreen() {
   const route = useRoute<RouteProp<RootStackParamList, 'WellnessIncoming'>>();
   const fromName = route.params?.fromName ?? 'Someone';
   const fromId = route.params?.fromId;
+  const checkInId = route.params?.checkInId;
   const { respondWellness } = useCheckIns();
   const [busy, setBusy] = useState(false);
 
   const v = useSharedValue(1);
 
   useEffect(() => {
+    // Mark as seen immediately so the sender knows it was received.
+    if (checkInId) supabase.rpc('mark_wellness_seen', { check_in_id: checkInId }).then(() => {});
     v.value = withTiming(0, { duration: COUNTDOWN_MS, easing: Easing.linear });
     // On timeout: go back without inserting a fake response — sender will see "no response yet"
     const id = setTimeout(() => nav.goBack(), COUNTDOWN_MS);
@@ -45,6 +50,9 @@ export function WellnessIncomingScreen() {
   const respond = async (kind: 'ok' | 'wellness_response' | 'alarm', note: string) => {
     if (busy) return;
     setBusy(true);
+    if (kind === 'ok') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    else if (kind === 'alarm') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    else Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     await respondWellness(kind, note, fromId);
     setBusy(false);
     if (kind === 'alarm') nav.replace('AlarmActive');

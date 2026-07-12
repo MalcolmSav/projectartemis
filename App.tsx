@@ -1,11 +1,15 @@
 import 'react-native-gesture-handler';
-import React, { useEffect, useMemo } from 'react';
+// Must be imported before any component so TaskManager registers the task
+// before the OS tries to deliver a background location update.
+import './src/tasks/locationTask';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { ActivityIndicator, View, Text, ScrollView } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
+import * as Notifications from 'expo-notifications';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme, DarkTheme, createNavigationContainerRef } from '@react-navigation/native';
 import {
   useFonts as useFraunces,
   Fraunces_400Regular_Italic,
@@ -25,6 +29,7 @@ import { AppStateProvider } from './src/state/AppState';
 import { AuthProvider, useAuth } from './src/state/Auth';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { OfflineBanner } from './src/components';
+import { RootStackParamList } from './src/navigation/types';
 
 import { AuthScreen } from './src/screens/AuthScreen';
 import { OnboardingScreen } from './src/screens/OnboardingScreen';
@@ -32,8 +37,12 @@ import { ResetPasswordScreen } from './src/screens/ResetPasswordScreen';
 import { usePresenceBroadcast } from './src/hooks/usePresenceBroadcast';
 import { useEvents } from './src/hooks/useEvents';
 import { useEventCheckinReminders } from './src/hooks/useEventCheckinReminders';
+import { registerPushToken } from './src/lib/notifications';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
+
+// Navigation ref used by the notification tap handler (outside NavigationContainer scope).
+const navRef = createNavigationContainerRef<RootStackParamList>();
 
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -72,10 +81,51 @@ function CalendarReminders() {
   return null;
 }
 
+function handleNotificationTap(data: Record<string, unknown> | undefined) {
+  if (!data || !navRef.isReady()) return;
+  const type = data.type as string | undefined;
+
+  if (type === 'wellness_check') {
+    // Open the response screen — friend is checking in on us
+    navRef.navigate('WellnessIncoming', {
+      fromId: data.fromId as string | undefined,
+      fromName: data.fromName as string | undefined,
+    });
+  } else if (type === 'alarm') {
+    // Open full-screen alarm — someone in circle raised an emergency
+    navRef.navigate('AlarmActive');
+  } else if (type === 'wellness_need_help') {
+    // Friend needs help — go to their profile so we can act
+    if (data.fromId) navRef.navigate('CirclePerson', { id: data.fromId as string });
+    else navRef.navigate('Tabs');
+  } else if (type === 'wellness_ok') {
+    // Friend is OK — just open the app, HomeScreen shows the response
+    navRef.navigate('Tabs');
+  } else if (type === 'circle_invite' || type === 'circle_accepted') {
+    // Open the app — Circle tab will show the pending invite or new member
+    navRef.navigate('Tabs');
+  } else if (type === 'trip_started' && data.tripId) {
+    // Open the trip follow screen
+    navRef.navigate('TripFollow', { tripId: data.tripId as string });
+  } else if (type === 'trip_arrived' || type === 'trip_cancelled' || type === 'trip_escalated') {
+    navRef.navigate('Tabs');
+  } else if (type === 'message' && data.fromId) {
+    // Open the chat with that person
+    navRef.navigate('Chat', { userId: data.fromId as string });
+  }
+}
+
 function GatedApp() {
   const t = useTheme();
   const { loading, profileLoading, isRecovery, session, profile } = useAuth();
   usePresenceBroadcast();
+
+  // Register push token once the user is signed in and their profile is loaded.
+  useEffect(() => {
+    if (session?.user?.id && profile?.onboarded) {
+      registerPushToken(session.user.id);
+    }
+  }, [session?.user?.id, profile?.onboarded]);
 
   const navTheme = useMemo(
     () => ({
@@ -113,9 +163,8 @@ function GatedApp() {
   }
 
   return (
-    <NavigationContainer theme={navTheme}>
+    <NavigationContainer ref={navRef} theme={navTheme}>
       <RootNavigator />
-
     </NavigationContainer>
   );
 }
@@ -140,6 +189,31 @@ export default function App() {
   useEffect(() => {
     if (ready) SplashScreen.hideAsync().catch(() => {});
   }, [ready]);
+
+  // Handle notification taps — both from background (listener) and cold-start
+  // (getLastNotificationResponseAsync). navRef.isReady() guards against the
+  // NavigationContainer not being mounted yet on cold launch.
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      handleNotificationTap(
+        response.notification.request.content.data as Record<string, unknown>,
+      );
+    });
+
+    // Cold-start: if the user tapped a notification that launched the app
+    Notifications.getLastNotificationResponseAsync().then((response) => {
+      if (response) {
+        // Small delay to let NavigationContainer mount
+        setTimeout(() => {
+          handleNotificationTap(
+            response.notification.request.content.data as Record<string, unknown>,
+          );
+        }, 500);
+      }
+    });
+
+    return () => sub.remove();
+  }, []);
 
   return (
     <ErrorBoundary>

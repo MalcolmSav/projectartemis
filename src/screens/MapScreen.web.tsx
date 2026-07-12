@@ -8,6 +8,7 @@ import { Text, Eyebrow, PillButton, BottomSheet, Toggle } from '../components';
 import { RootStackParamList } from '../navigation/types';
 import { ArtemisMark, IconLocate, IconWarn } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
+import { useT } from '../i18n';
 import { useReports, DBReport } from '../hooks/useReports';
 import { useCircle } from '../hooks/useCircle';
 import { usePresence } from '../hooks/usePresence';
@@ -45,6 +46,7 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export function MapScreen() {
   const t = useTheme();
+  const tr = useT();
   const nav = useNavigation<Nav>();
   const { reports, addReport } = useReports();
   const { members } = useCircle();
@@ -149,7 +151,7 @@ export function MapScreen() {
           >
             <ArtemisMark size={18} moonColor={t.colors.forest700} />
             <Text variant="body" weight="semibold">
-              {permDenied ? 'Stockholm (default)' : 'Near you'}
+              {permDenied ? tr('Stockholm (default)') : tr('Near you')}
             </Text>
           </View>
         </View>
@@ -177,10 +179,10 @@ export function MapScreen() {
           <View style={{ flex: 1 }}>
             <Text variant="small" weight="semibold">
               {riskLevel === 'alarm'
-                ? 'Unsafe area nearby'
+                ? tr('Unsafe area nearby')
                 : riskLevel === 'warn'
-                  ? 'Stay aware nearby'
-                  : 'Clear around you'}
+                  ? tr('Stay aware nearby')
+                  : tr('Clear around you')}
             </Text>
             <Text variant="meta" color={t.colors.inkMute}>
               {coords
@@ -232,7 +234,7 @@ export function MapScreen() {
                     weight="semibold"
                     color={active ? palette.gold300 : t.colors.inkSoft}
                   >
-                    {k === 'all' ? 'All' : k.charAt(0).toUpperCase() + k.slice(1)}
+                    {k === 'all' ? tr('All') : tr(k.charAt(0).toUpperCase() + k.slice(1) as any)}
                   </Text>
                 </Pressable>
               );
@@ -253,7 +255,7 @@ export function MapScreen() {
                 color: t.colors.inkSoft,
               }}
             >
-              Circle Members
+              {tr('Circle Members')}
             </Text>
             {circleCoords.map((p) => {
               const pinColor = p.stale ? t.colors.inkMute : palette.gold500;
@@ -262,11 +264,11 @@ export function MapScreen() {
                     const mins = Math.round(
                       (Date.now() - new Date(p.updatedAt).getTime()) / 60_000
                     );
-                    if (mins < 1) return 'just now';
-                    if (mins < 60) return `${mins}m ago`;
+                    if (mins < 1) return tr('just now');
+                    if (mins < 60) return tr('{m} min ago', { m: mins });
                     const hours = Math.floor(mins / 60);
-                    if (hours < 24) return `${hours}h ago`;
-                    return `${Math.floor(hours / 24)}d ago`;
+                    if (hours < 24) return tr('{h} hr ago', { h: hours });
+                    return tr('{d}d ago', { d: Math.floor(hours / 24) });
                   })()
                 : null;
 
@@ -327,7 +329,7 @@ export function MapScreen() {
                     </Text>
                     {staleLabel && (
                       <Text variant="meta" color={t.colors.inkMute}>
-                        Last seen {staleLabel}
+                        {tr('Last seen {time}', { time: staleLabel })}
                       </Text>
                     )}
                   </View>
@@ -348,7 +350,7 @@ export function MapScreen() {
                 color: t.colors.inkSoft,
               }}
             >
-              Safety Reports
+              {tr('Safety Reports')}
             </Text>
             {reportCoords.map((r) => (
               <Pressable
@@ -398,10 +400,10 @@ export function MapScreen() {
             }}
           >
             <Text variant="meta" weight="semibold" color={t.colors.gold700}>
-              FRIENDS NOT SHARING
+              {tr('FRIENDS NOT SHARING')}
             </Text>
             <Text variant="meta" color={t.colors.inkSoft}>
-              None of your circle has location sharing on right now.
+              {tr('None of your circle has location sharing on right now.')}
             </Text>
           </View>
         )}
@@ -435,7 +437,7 @@ export function MapScreen() {
         >
           <IconWarn size={16} color={palette.forest900} />
           <Text variant="small" weight="semibold" color={palette.forest900}>
-            Report this area
+            {tr('Report this area')}
           </Text>
         </Pressable>
       </View>
@@ -460,7 +462,7 @@ export function MapScreen() {
               {selected.area ?? 'Unknown area'} · {new Date(selected.created_at).toLocaleString()}
             </Text>
             <PillButton block style={{ marginTop: 16 }} onPress={() => setSelected(null)}>
-              Close
+              {tr('Close')}
             </PillButton>
           </View>
         )}
@@ -496,28 +498,29 @@ function ReportSheet({
   onSubmit: (r: { kind: ReportKind; label: string; notes: string; anon: boolean }) => void;
 }) {
   const t = useTheme();
+  const tr = useT();
   const [kind, setKind] = useState<ReportKind>('yellow');
   const [type, setType] = useState('Followed');
   const [notes, setNotes] = useState('');
   const [anon, setAnon] = useState(true);
 
   const SEVERITY: { id: ReportKind; label: string }[] = [
-    { id: 'yellow', label: 'Felt uneasy' },
-    { id: 'red', label: 'Unsafe' },
-    { id: 'green', label: 'Safe area' },
+    { id: 'yellow', label: tr('Felt uneasy') },
+    { id: 'red', label: tr('Unsafe') },
+    { id: 'green', label: tr('Safe area') },
   ];
-  const TYPES = ['Followed', 'Harassment', 'Poorly lit', 'Other'];
+  const TYPES = [tr('Followed'), tr('Harassment'), tr('Poorly lit'), tr('Other')];
 
   return (
     <BottomSheet visible={open} onClose={onClose}>
       <Text style={{ fontFamily: t.type.display, fontSize: 24, marginBottom: 4 }}>
-        Report this area
+        {tr('Report this area')}
       </Text>
       <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 16 }}>
-        Helps your circle and other Artemis users navigate safely.
+        {tr('Helps your circle and other Artemis users navigate safely.')}
       </Text>
 
-      <Eyebrow style={{ marginBottom: 6 }}>SEVERITY</Eyebrow>
+      <Eyebrow style={{ marginBottom: 6 }}>{tr('SEVERITY')}</Eyebrow>
       <View style={{ flexDirection: 'row', gap: 6, marginBottom: 16 }}>
         {SEVERITY.map((s) => {
           const active = kind === s.id;
@@ -545,7 +548,7 @@ function ReportSheet({
         })}
       </View>
 
-      <Eyebrow style={{ marginBottom: 6 }}>TYPE</Eyebrow>
+      <Eyebrow style={{ marginBottom: 6 }}>{tr('TYPE')}</Eyebrow>
       <View style={{ flexDirection: 'row', gap: 6, marginBottom: 16 }}>
         {TYPES.map((t2) => {
           const active = type === t2;
@@ -573,9 +576,9 @@ function ReportSheet({
         })}
       </View>
 
-      <Eyebrow style={{ marginBottom: 6 }}>NOTES</Eyebrow>
+      <Eyebrow style={{ marginBottom: 6 }}>{tr('NOTES')}</Eyebrow>
       <TextInput
-        placeholder="Add any details (optional)"
+        placeholder={tr('Add any details (optional)')}
         placeholderTextColor={t.colors.inkMute}
         value={notes}
         onChangeText={setNotes}
@@ -595,7 +598,7 @@ function ReportSheet({
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
         <Toggle on={anon} onChange={setAnon} />
         <Text variant="body" color={t.colors.inkSoft}>
-          Report anonymously
+          {tr('Report anonymously')}
         </Text>
       </View>
 
@@ -610,7 +613,7 @@ function ReportSheet({
           })
         }
       >
-        Submit Report
+        {tr('Submit Report')}
       </PillButton>
     </BottomSheet>
   );

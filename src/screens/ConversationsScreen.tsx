@@ -5,6 +5,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Text, Eyebrow, Avatar } from '../components';
 import { IconChevron } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
+import { useT } from '../i18n';
 import { useConversations } from '../hooks/useConversations';
 import { palette } from '../theme/tokens';
 import { RootStackParamList } from '../navigation/types';
@@ -25,6 +26,7 @@ function relTime(iso: string) {
 
 export function ConversationsScreen() {
   const t = useTheme();
+  const tr = useT();
   const nav = useNavigation<Nav>();
   const { items, loading, refresh } = useConversations();
   const [refreshing, setRefreshing] = React.useState(false);
@@ -58,7 +60,7 @@ export function ConversationsScreen() {
           <IconChevron dir="left" color={t.colors.inkSoft} />
         </Pressable>
         <Text variant="large" weight="semibold">
-          Messages
+          {tr('Messages')}
         </Text>
       </View>
 
@@ -68,9 +70,9 @@ export function ConversationsScreen() {
         </View>
       ) : items.length === 0 ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40 }}>
-          <Eyebrow color={t.colors.inkMute}>NO MESSAGES YET</Eyebrow>
+          <Eyebrow color={t.colors.inkMute}>{tr('NO MESSAGES YET')}</Eyebrow>
           <Text variant="small" color={t.colors.inkSoft} style={{ marginTop: 8, textAlign: 'center' }}>
-            Open a friend's profile and tap Message to start a conversation.
+            {tr("Open a friend's profile and tap Message to start a conversation.")}
           </Text>
         </View>
       ) : (
@@ -80,7 +82,7 @@ export function ConversationsScreen() {
         >
           {items.map((c) => {
             const name = c.other?.name?.trim() || c.other?.email?.split('@')[0] || 'Unknown';
-            const preview = (c.lastFromMe ? 'You: ' : '') + c.lastBody;
+            const preview = (c.lastFromMe ? tr('You: ') : '') + c.lastBody;
             return (
               <Pressable
                 key={c.otherId}

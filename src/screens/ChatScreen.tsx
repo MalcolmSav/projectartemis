@@ -15,6 +15,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { Text, Avatar, Eyebrow } from '../components';
 import { IconChevron, IconPin } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
+import { useT } from '../i18n';
 import { useAuth } from '../state/Auth';
 import { useChat } from '../hooks/useChat';
 import { useCheckIns } from '../hooks/useCheckIns';
@@ -35,6 +36,7 @@ function parseLocation(body: string): { lat: number; lng: number } | null {
 
 export function ChatScreen() {
   const t = useTheme();
+  const tr = useT();
   const nav = useNavigation();
   const route = useRoute<RouteProp<RootStackParamList, 'Chat'>>();
   const otherId = route.params.userId;
@@ -139,7 +141,7 @@ export function ChatScreen() {
         >
           {messages.length === 0 && (
             <View style={{ alignItems: 'center', paddingTop: 60 }}>
-              <Eyebrow color={t.colors.inkMute}>NEW CONVERSATION</Eyebrow>
+              <Eyebrow color={t.colors.inkMute}>{tr('NEW CONVERSATION')}</Eyebrow>
               <Text variant="small" color={t.colors.inkSoft} style={{ marginTop: 6, textAlign: 'center' }}>
                 Say hi to {otherName}.
               </Text>
@@ -188,10 +190,10 @@ export function ChatScreen() {
                         <IconPin size={16} color={mine ? palette.gold300 : t.colors.forest700} />
                         <View>
                           <Text variant="body" weight="semibold" color={mine ? palette.gold300 : t.colors.ink}>
-                            {mine ? 'My location' : `${otherName}'s location`}
+                            {mine ? tr('My location') : `${otherName}'s location`}
                           </Text>
                           <Text variant="meta" color={mine ? palette.gold500 : t.colors.inkMute}>
-                            {loc.lat.toFixed(4)}, {loc.lng.toFixed(4)} · Tap to open
+                            {loc.lat.toFixed(4)}, {loc.lng.toFixed(4)} · {tr('Tap to open')}
                           </Text>
                         </View>
                       </Pressable>
@@ -253,7 +255,7 @@ export function ChatScreen() {
         <TextInput
           value={draft}
           onChangeText={setDraft}
-          placeholder="Message…"
+          placeholder={tr('Message…')}
           placeholderTextColor={t.colors.inkMute}
           multiline
           style={{
