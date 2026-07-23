@@ -1,5 +1,6 @@
 import React from 'react';
-import { ScrollView, View, Pressable } from 'react-native';
+import { ScrollView, View, Pressable, Alert, Linking, Platform } from 'react-native';
+import * as Location from 'expo-location';
 import { useNavigation } from '@react-navigation/native';
 import { Text, Eyebrow, Avatar, Card, Toggle, Divider } from '../components';
 import { IconChevron, IconLocate } from '../components/icons';
@@ -8,6 +9,7 @@ import { useAppState } from '../state/AppState';
 import { useCircle } from '../hooks/useCircle';
 import { usePresence } from '../hooks/usePresence';
 import { personName } from '../lib/person';
+import { useT } from '../i18n';
 import { ShareMode } from '../data/demo';
 
 const MODES: { id: ShareMode; label: string; sub: string }[] = [
@@ -18,13 +20,31 @@ const MODES: { id: ShareMode; label: string; sub: string }[] = [
 
 export function LocationShareScreen() {
   const t = useTheme();
+  const tr = useT();
   const nav = useNavigation();
   const { sharing, shareStartedAt, setSharing, shareMode, setShareMode, visibleTo, setVisibleTo } = useAppState();
   const { members } = useCircle();
   const { byUser: presenceByUser } = usePresence();
 
-  const onMasterToggle = (next: boolean) => {
+  const onMasterToggle = async (next: boolean) => {
     if (next === sharing) return;
+    if (next) {
+      // Don't show "Sharing live location" unless we can actually share.
+      const { status, canAskAgain } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          tr('Location permission needed'),
+          tr('Artemis needs location access to share your position with your circle.'),
+          canAskAgain || Platform.OS === 'web'
+            ? undefined
+            : [
+                { text: tr('Cancel'), style: 'cancel' },
+                { text: tr('Open Settings'), onPress: () => Linking.openSettings() },
+              ],
+        );
+        return;
+      }
+    }
     setSharing(next);
   };
 
@@ -35,7 +55,7 @@ export function LocationShareScreen() {
           <IconChevron dir="left" color={t.colors.inkSoft} />
         </Pressable>
         <Text variant="large" weight="semibold">
-          Location sharing
+          {tr('Location sharing')}
         </Text>
       </View>
 
@@ -56,12 +76,12 @@ export function LocationShareScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <Text variant="body" weight="semibold">
-                {sharing ? 'Sharing live location' : 'Not sharing'}
+                {sharing ? tr('Sharing live location') : tr('Not sharing')}
               </Text>
               {sharing && shareStartedAt && (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
                   <Text variant="meta" color={t.colors.inkMute}>
-                    Since {new Date(shareStartedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {tr('Since {time}', { time: new Date(shareStartedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })}
                   </Text>
                 </View>
               )}
@@ -70,7 +90,7 @@ export function LocationShareScreen() {
           </View>
         </Card>
 
-        <Eyebrow style={{ marginBottom: 8 }}>MODE</Eyebrow>
+        <Eyebrow style={{ marginBottom: 8 }}>{tr('MODE')}</Eyebrow>
         <View style={{ gap: 10, marginBottom: 22 }}>
           {MODES.map((m) => {
             const active = shareMode === m.id;
@@ -109,10 +129,10 @@ export function LocationShareScreen() {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text variant="body" weight="semibold" color={active ? t.colors.gold300 : t.colors.ink}>
-                    {m.label}
+                    {tr(m.label)}
                   </Text>
                   <Text variant="meta" color={active ? 'rgba(242,226,187,0.7)' : t.colors.inkMute}>
-                    {m.sub}
+                    {tr(m.sub)}
                   </Text>
                 </View>
               </Pressable>
@@ -120,11 +140,11 @@ export function LocationShareScreen() {
           })}
         </View>
 
-        <Eyebrow style={{ marginBottom: 8 }}>CURRENTLY VISIBLE TO</Eyebrow>
+        <Eyebrow style={{ marginBottom: 8 }}>{tr('CURRENTLY VISIBLE TO')}</Eyebrow>
         {members.length === 0 ? (
           <Card>
             <Text variant="small" color={t.colors.inkSoft} style={{ textAlign: 'center', paddingVertical: 8 }}>
-              No one in your circle yet. Add people on the Circle tab to share your location with them.
+              {tr('No one in your circle yet. Add people on the Circle tab to share your location with them.')}
             </Text>
           </Card>
         ) : (
@@ -150,8 +170,8 @@ export function LocationShareScreen() {
                         {name}
                       </Text>
                       <Text variant="meta" color={t.colors.inkMute}>
-                        {isVisible && sharing ? 'Can see you · Live' : 'Hidden from them'}
-                        {theyShareBack ? ' · sharing back' : ''}
+                        {isVisible && sharing ? tr('Can see you · Live') : tr('Hidden from them')}
+                        {theyShareBack ? tr(' · sharing back') : ''}
                       </Text>
                     </View>
                     <Toggle on={isVisible} onChange={(b) => setVisibleTo(m.profile.id, b)} disabled={!sharing} />

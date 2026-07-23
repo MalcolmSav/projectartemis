@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import * as Haptics from 'expo-haptics';
-import { View, Pressable } from 'react-native';
+import { View, Pressable, Alert } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -53,10 +53,24 @@ export function WellnessIncomingScreen() {
     if (kind === 'ok') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     else if (kind === 'alarm') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     else Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    await respondWellness(kind, note, fromId);
+    const res = await respondWellness(kind, note, fromId);
     setBusy(false);
-    if (kind === 'alarm') nav.replace('AlarmActive');
-    else nav.goBack();
+    // Alarm always proceeds — AlarmActiveScreen inserts its own alarm event
+    // and shows honest sent/failed status with a retry, so the circle still
+    // gets notified even if this particular insert failed.
+    if (kind === 'alarm') {
+      nav.replace('AlarmActive');
+      return;
+    }
+    if (res.error) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert(
+        tr("Couldn't send your response"),
+        tr('{name} may not see that you answered. Check your connection and try again.', { name: fromName }),
+      );
+      return;
+    }
+    nav.goBack();
   };
 
   return (

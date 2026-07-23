@@ -13,3 +13,5 @@ export { SectionTitle, Divider, StatusPill, CircleCard, QuickAction, EventCard, 
 export { Skeleton } from './Skeleton';
 export { EmptyState } from './EmptyState';
 export { TripMap } from './TripMap';
+export { useFeatureIntro, FeatureIntroSheet, FEATURES } from './FeatureIntro';
+export { GroupsSheet } from './GroupsSheet';

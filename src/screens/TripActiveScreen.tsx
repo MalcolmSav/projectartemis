@@ -20,6 +20,13 @@ import { personName } from '../lib/person';
 import { useT } from '../i18n';
 import { RootStackParamList } from '../navigation/types';
 import { getRoute, formatDistance, formatDuration, LatLng, TravelMode } from '../lib/routing';
+import {
+  isLiveActivitiesSupported,
+  startTripActivity,
+  updateTripActivity,
+  endTripActivity,
+  TripActivityState,
+} from '../lib/liveActivity';
 
 // Grace period after ETA before the buddy/circle is auto-alerted.
 const ETA_GRACE_MS = 5 * 60 * 1000;
@@ -69,6 +76,13 @@ export function TripActiveScreen() {
   const escalateRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const arrivedRef = useRef(false);
   const lastRerouteRef = useRef(0);
+  // Set right before any finish() call that's followed by our own explicit
+  // navigation (arrived/escalated/cancelled). Without this, the "activeTrip
+  // became null -> bounce to Trip setup" effect below fires in a race with
+  // that explicit navigation — e.g. tapping "Need help" would replace this
+  // screen with TripSetupScreen WHILE AlarmActive was being presented on top
+  // of it, corrupting the native stack and crashing on the next back-press.
+  const leavingRef = useRef(false);
 
   const destCoord: LatLng | null =
     activeTrip?.dest_lat != null && activeTrip?.dest_lng != null
@@ -185,14 +199,31 @@ export function TripActiveScreen() {
     };
   }, [activeTrip?.buddy_id, activeTrip?.destination, user]);
 
-  // Auto-escalation: alert the circle and raise the alarm.
+  // Escalate to the BUDDY only — the person following the trip. Marking the
+  // trip 'escalated' fires the trips webhook, which pushes to the buddy and
+  // turns their follow screen red. This does NOT raise a whole-circle alarm;
+  // that's a separate, explicit choice (escalateWholeCircle below), matching
+  // the ETA prompt's promise that only the buddy is alerted.
   const escalate = useCallback(async () => {
     if (escalateRef.current) {
       clearTimeout(escalateRef.current);
       escalateRef.current = null;
     }
+    leavingRef.current = true;
+    await finish('escalated');
+    nav.goBack();
+  }, [finish, nav]);
+
+  // Explicit "alert my entire circle" — raises a real alarm (all circle members
+  // get the SOS + FriendAlarmScreen) on top of escalating the trip to the buddy.
+  const escalateWholeCircle = useCallback(async () => {
+    if (escalateRef.current) {
+      clearTimeout(escalateRef.current);
+      escalateRef.current = null;
+    }
     const dest = activeTrip?.destination ?? 'their destination';
-    await recordAlarm(`Missed trip ETA to ${dest} — auto-escalated`);
+    leavingRef.current = true;
+    await recordAlarm(`Need help during trip to ${dest}`);
     await finish('escalated');
     nav.replace('AlarmActive');
   }, [activeTrip?.destination, recordAlarm, finish, nav]);
@@ -219,6 +250,7 @@ export function TripActiveScreen() {
               clearTimeout(escalateRef.current);
               escalateRef.current = null;
             }
+            leavingRef.current = true;
             await finish('arrived');
             nav.goBack();
           },
@@ -247,6 +279,7 @@ export function TripActiveScreen() {
       const nearDest = destCoord && distanceM(lat, lng, destCoord.latitude, destCoord.longitude) <= ARRIVAL_RADIUS_M;
       if (!nearHome && !nearDest) return false;
       arrivedRef.current = true;
+      leavingRef.current = true;
       if (escalateRef.current) {
         clearTimeout(escalateRef.current);
         escalateRef.current = null;
@@ -324,10 +357,53 @@ export function TripActiveScreen() {
   }, [activeTrip?.id, user, checkArrival]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!loading && !activeTrip) {
+    if (!loading && !activeTrip && !leavingRef.current) {
       nav.replace('Trip');
     }
   }, [activeTrip, loading, nav]);
+
+  // ── Live Activity (Dynamic Island + lock-screen card) ─────────────────────
+  // Freshest state is kept in a ref so the 15 s update interval reads it without
+  // re-subscribing every render. The native side self-ticks the ETA countdown
+  // from endEpochSec, so we don't need frequent JS updates just for the timer.
+  const liveActivityState: TripActivityState = {
+    etaText: activeTrip?.eta ?? '—',
+    endEpochSec: remaining
+      ? Math.floor((Date.now() + remaining.s * 1000) / 1000)
+      : etaTimestamp
+        ? Math.floor(etaTimestamp / 1000)
+        : null,
+    distanceText: remaining ? formatDistance(remaining.m) : '',
+    progress: pct != null ? Math.max(0, Math.min(1, pct / 100)) : 0,
+    buddyName:
+      personName(members.find((m) => m.profile.id === activeTrip?.buddy_id)?.profile ?? null) || tr('your buddy'),
+    isFollowing: !!activeTrip?.followed_at,
+    status: 'on_the_way',
+  };
+  const liveStateRef = useRef(liveActivityState);
+  liveStateRef.current = liveActivityState;
+  const activityIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!activeTrip?.id || !isLiveActivitiesSupported()) return;
+    activityIdRef.current = startTripActivity({
+      destination: activeTrip.destination,
+      transport: activeTrip.transport ?? 'walk',
+      state: liveStateRef.current,
+    });
+    const iv = setInterval(() => updateTripActivity(activityIdRef.current, liveStateRef.current), 15_000);
+    return () => {
+      clearInterval(iv);
+      endTripActivity(activityIdRef.current);
+      activityIdRef.current = null;
+    };
+  }, [activeTrip?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Push an immediate update the moment the buddy starts following — that "👀
+  // Emma is watching" flip on the lock screen is the signature moment.
+  useEffect(() => {
+    if (activeTrip?.followed_at) updateTripActivity(activityIdRef.current, liveStateRef.current);
+  }, [activeTrip?.followed_at]);
 
   if (!activeTrip) return null;
   const buddy = members.find((m) => m.profile.id === activeTrip.buddy_id);
@@ -475,8 +551,10 @@ export function TripActiveScreen() {
                 <Text variant="body" weight="semibold">
                   {personName(buddy.profile)}
                 </Text>
-                <Text variant="meta" color={t.colors.inkMute}>
-                  {buddy.relation ?? tr('Friend')} · {tr('sees your live route')}
+                <Text variant="meta" color={activeTrip.followed_at ? palette.statusOk : t.colors.inkMute}>
+                  {activeTrip.followed_at
+                    ? tr('👀 Following your trip now')
+                    : `${buddy.relation ?? tr('Friend')} · ${tr("hasn't opened your trip yet")}`}
                 </Text>
               </View>
             </View>
@@ -499,6 +577,7 @@ export function TripActiveScreen() {
             style={{ flex: 1 }}
             onPress={async () => {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              leavingRef.current = true;
               await finish('arrived');
               nav.goBack();
             }}
@@ -509,17 +588,47 @@ export function TripActiveScreen() {
             variant="danger"
             size="lg"
             style={{ flex: 1 }}
-            onPress={async () => {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-              await finish('escalated');
-              nav.navigate('AlarmActive');
+            onPress={() => {
+              const buddyName = buddy ? personName(buddy.profile) : tr('your buddy');
+              // Default is buddy-only — a trip already has a follower watching.
+              // Alerting the WHOLE circle is a deliberate, separate choice.
+              Alert.alert(
+                tr('Need help?'),
+                tr('{name} is following your trip and will be alerted right away. Do you also want to alert your entire circle?', { name: buddyName }),
+                [
+                  {
+                    text: tr('Alert {name}', { name: buddyName }),
+                    onPress: () => {
+                      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                      escalate();
+                    },
+                  },
+                  {
+                    text: tr('🚨 Alert entire circle'),
+                    style: 'destructive',
+                    onPress: () => {
+                      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                      escalateWholeCircle();
+                    },
+                  },
+                  { text: tr('Cancel'), style: 'cancel' },
+                ],
+              );
             }}
           >
             {tr('🚨  Need help')}
           </PillButton>
         </View>
 
-        <PillButton variant="ghost" block style={{ marginTop: 8 }} onPress={() => finish('cancelled').then(() => nav.goBack())}>
+        <PillButton
+          variant="ghost"
+          block
+          style={{ marginTop: 8 }}
+          onPress={() => {
+            leavingRef.current = true;
+            finish('cancelled').then(() => nav.goBack());
+          }}
+        >
           {tr('Cancel trip')}
         </PillButton>
       </ScrollView>

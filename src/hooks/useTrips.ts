@@ -21,6 +21,7 @@ export interface Trip {
   duration_s: number | null;
   remaining_m: number | null; // live, updated by the traveler
   remaining_s: number | null; // live, updated by the traveler
+  followed_at: string | null; // set when the buddy opens the follow screen
 }
 
 export function useTrips() {
@@ -59,7 +60,9 @@ export function useTrips() {
     async (t: {
       destination: string;
       eta?: string;
-      buddyId?: string | null;
+      /** All followers. The first is the primary buddy (ETA-miss escalation,
+       *  follow receipt); every id — including the first — becomes a follower. */
+      buddyIds?: string[];
       transport?: string;
       locationInterval?: number;
       destLat?: number;
@@ -69,13 +72,15 @@ export function useTrips() {
       durationS?: number;
     }) => {
       if (!user) return { error: 'Not signed in' };
+      const buddyIds = (t.buddyIds ?? []).filter(Boolean);
+      const primary = buddyIds[0] ?? null;
       const { data, error } = await supabase
         .from('trips')
         .insert({
           user_id: user.id,
           destination: t.destination,
           eta: t.eta ?? null,
-          buddy_id: t.buddyId ?? null,
+          buddy_id: primary,
           transport: t.transport ?? null,
           location_interval: t.locationInterval ?? 60,
           dest_lat: t.destLat ?? null,
@@ -89,6 +94,15 @@ export function useTrips() {
         .select()
         .single();
       if (error) return { error: error.message };
+      // Extra followers go in trip_buddies (the primary is already buddy_id).
+      // Each row-insert drives its own "trip started" push, avoiding the race
+      // where the trips-INSERT webhook fires before followers are written.
+      const extras = buddyIds.slice(1);
+      if (extras.length > 0) {
+        await supabase
+          .from('trip_buddies')
+          .insert(extras.map((b) => ({ trip_id: (data as Trip).id, buddy_id: b })));
+      }
       setActiveTrip(data as Trip);
       return { trip: data as Trip };
     },

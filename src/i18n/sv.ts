@@ -222,6 +222,10 @@ export const sv: Record<string, string> = {
   'All details': 'Alla detaljer',
   Done: 'Klart',
   'Shared with you': 'Delat med dig',
+  'Title is required': 'Titel krävs',
+  'Date must be YYYY-MM-DD': 'Datum måste vara ÅÅÅÅ-MM-DD',
+  'Time must be HH:MM (e.g. 21:00)': 'Tid måste vara HH:MM (t.ex. 21:00)',
+  'e.g. 2130 → 21:30 (optional)': 't.ex. 2130 → 21:30 (valfritt)',
   '🛡 CHECK-IN': '🛡 INCHECKNING',
 
   // ── Chat ─────────────────────────────────────────────
@@ -303,7 +307,209 @@ export const sv: Record<string, string> = {
   'arrived safely': 'kom fram säkert',
   'cancelled their trip': 'avbröt sin resa',
 
+  // ── Location sharing screen ───────────────────────────
+  'Location sharing': 'Platsdelning',
+  'Location permission needed': 'Platsbehörighet krävs',
+  'Artemis needs location access to share your position with your circle.':
+    'Artemis behöver platsåtkomst för att dela din position med din cirkel.',
+  'Open Settings': 'Öppna Inställningar',
+  'Allow location access to share your position.': 'Tillåt platsåtkomst för att dela din position.',
+  'Sharing live location': 'Delar live-plats',
+  'Not sharing': 'Delar inte',
+  'Since {time}': 'Sedan {time}',
+  MODE: 'LÄGE',
+  'Always on': 'Alltid på',
+  'Until you turn it off': 'Tills du stänger av',
+  Timed: 'Tidsbegränsad',
+  '2hr auto-off': 'Stängs av efter 2 tim',
+  'Event-based': 'Händelsebaserad',
+  'Only during calendar events': 'Bara under kalenderhändelser',
+  'CURRENTLY VISIBLE TO': 'SYNLIG FÖR JUST NU',
+  'No one in your circle yet. Add people on the Circle tab to share your location with them.':
+    'Ingen i din cirkel än. Lägg till personer i fliken Cirkel för att dela din plats med dem.',
+  'Can see you · Live': 'Kan se dig · Live',
+  'Hidden from them': 'Dold för dem',
+  ' · sharing back': ' · delar tillbaka',
+
+  // ── Wellness check feedback ───────────────────────────
+  'Give them a moment 🌙': 'Ge dem en stund 🌙',
+  'You already checked on {name} recently. You can send another check in {m} min.':
+    'Du kollade nyligen på {name}. Du kan skicka en ny koll om {m} min.',
+  'Wellness check sent 🏹': 'Mående-koll skickad 🏹',
+  'Check if {name} is okay': 'Kolla om {name} mår bra',
+  'Sends a gentle “you good?” — they tap once to reply.':
+    'Skickar ett vänligt "allt bra?" — de svarar med ett tryck.',
+  '📍 View on map': '📍 Visa på karta',
+  Seen: 'Sedd',
+  'Sent {time}': 'Skickad {time}',
+  '⏱ No reply': '⏱ Inget svar',
+  'No reply — reach out to them': 'Inget svar — hör av dig till dem',
+  'Answered {time}': 'Svarade {time}',
+  '{name} has 30 minutes to respond — you’ll be notified.':
+    '{name} har 30 minuter på sig att svara — du får en avisering.',
+  'your friend': 'din vän',
+
+  // ── Groups & multi-follower trips ─────────────────────
+  Groups: 'Grupper',
+  'Bundle people so a whole group can follow a trip in one tap.':
+    'Bunta ihop personer så en hel grupp kan följa en resa med ett tryck.',
+  'No groups yet.': 'Inga grupper än.',
+  '+ New group': '+ Ny grupp',
+  'New group': 'Ny grupp',
+  'Edit group': 'Redigera grupp',
+  'e.g. Family': 't.ex. Familjen',
+  MEMBERS: 'MEDLEMMAR',
+  'Create group': 'Skapa grupp',
+  'Delete group': 'Ta bort grupp',
+  'Delete group?': 'Ta bort grupp?',
+  '“{name}” will be removed. Members stay in your circle.':
+    '"{name}" tas bort. Medlemmarna finns kvar i din cirkel.',
+  '{n} members': '{n} medlemmar',
+  'WHO FOLLOWS THIS TRIP': 'VILKA FÖLJER DENNA RESA',
+  'Primary · alerted if you miss your ETA': 'Primär · larmas om du missar ankomsttiden',
+  'Everyone selected can watch your live trip. The first is your primary buddy.':
+    'Alla valda kan följa din live-resa. Den första är din primära kompis.',
+
+  // ── First-use feature intros ──────────────────────────
+  'FIRST TIME': 'FÖRSTA GÅNGEN',
+  'Got it, continue': 'Uppfattat, fortsätt',
+  'Pick a destination and the people you choose watch your live route on a map. If you don’t arrive by your ETA, they’re alerted automatically.':
+    'Välj en destination så följer de du väljer din live-rutt på en karta. Om du inte kommit fram vid din ankomsttid larmas de automatiskt.',
+  'Send a quick “are you okay?” to someone in your circle. They have 30 minutes to respond — and you’ll know the moment they do, even where they answered from.':
+    'Skicka en snabb "mår du bra?" till någon i din cirkel. De har 30 minuter på sig att svara — och du får veta direkt, till och med varifrån de svarade.',
+  'Schedule a realistic incoming call to give yourself an easy, believable way out of any situation.':
+    'Schemalägg ett realistiskt inkommande samtal för att ge dig själv en enkel, trovärdig väg ut ur vilken situation som helst.',
+  'Set a timer before a walk, a date, or a late shift. If you don’t confirm you’re safe in time, your circle is alerted and your live location is shared.':
+    'Ställ in en timer före en promenad, en dejt eller ett sent skift. Om du inte bekräftar att du är trygg i tid larmas din cirkel och din live-plats delas.',
+  'See your circle’s live locations and community safety reports near you. Flag an unsafe area to quietly warn others.':
+    'Se din cirkels live-platser och säkerhetsrapporter från communityn nära dig. Markera ett osäkert område för att diskret varna andra.',
+  'Choose exactly who in your circle can see your live location — and turn it on or off in one tap, anytime.':
+    'Välj exakt vem i din cirkel som kan se din live-plats — och slå på eller av det med ett tryck, när som helst.',
+
+  // ── Auth screen ───────────────────────────────────────
+  Welcome: 'Välkommen',
+  'back.': 'tillbaka.',
+  PASSWORD: 'LÖSENORD',
+  'Make your': 'Skapa din',
+  'Continue with Google': 'Fortsätt med Google',
+  or: 'eller',
+  'How others will find and add you': 'Så hittar andra dig och lägger till dig',
+  'Working…': 'Arbetar…',
+  'Sign in': 'Logga in',
+  'Create account': 'Skapa konto',
+  "Don't have an account? ": 'Har du inget konto? ',
+  'Already have an account? ': 'Har du redan ett konto? ',
+  'Create one': 'Skapa ett',
+  'Reset link sent — check your email.': 'Återställningslänk skickad — kolla din e-post.',
+  'Forgot password?': 'Glömt lösenord?',
+
+  // ── Onboarding ────────────────────────────────────────
+  'ONE LAST THING': 'EN SISTA SAK',
+  'Choose your': 'Välj ditt',
+  'username.': 'användarnamn.',
+  'This is how others find and add you to their circle.':
+    'Så här hittar andra dig och lägger till dig i sin cirkel.',
+  'FULL NAME': 'FULLSTÄNDIGT NAMN',
+  'First and last name': 'För- och efternamn',
+  USERNAME: 'ANVÄNDARNAMN',
+  Continue: 'Fortsätt',
+  'WELCOME TO ARTEMIS': 'VÄLKOMMEN TILL ARTEMIS',
+  'Someone always has': 'Någon har alltid',
+  'your back.': 'din rygg.',
+  'Share where you’re headed, check in with the people you trust, and reach help fast when something feels off. Two quick steps to begin — the rest you’ll find as you go.':
+    'Dela vart du är på väg, checka in med de du litar på, och nå hjälp snabbt när något känns fel. Två snabba steg för att börja — resten hittar du efter hand.',
+  'Add trusted people to your circle.': 'Lägg till pålitliga personer i din cirkel.',
+  'Add an emergency contact.': 'Lägg till en nödkontakt.',
+  'Start setup': 'Starta installationen',
+  'LAST STEP': 'SISTA STEGET',
+  'Add your': 'Lägg till dina',
+  'emergency contacts.': 'nödkontakter.',
+  'People to call or text in an emergency — like a partner or parent. You can skip this and add them later in your profile.':
+    'Personer att ringa eller sms:a i en nödsituation — som en partner eller förälder. Du kan hoppa över detta och lägga till dem senare i din profil.',
+  'CONTACT {n}': 'KONTAKT {n}',
+  'Name or relation (e.g. Mom)': 'Namn eller relation (t.ex. Mamma)',
+  'Phone number': 'Telefonnummer',
+  '+ Add emergency contact': '+ Lägg till nödkontakt',
+  Next: 'Nästa',
+  'BUILD YOUR CIRCLE': 'BYGG DIN CIRKEL',
+  'Add people to your': 'Lägg till personer i din',
+  'circle.': 'cirkel.',
+  'Trusted people who can check on you and see what you choose to share. You can add more anytime.':
+    'Pålitliga personer som kan kolla på dig och se det du väljer att dela. Du kan lägga till fler när som helst.',
+  '@username or name': '@användarnamn eller namn',
+  RESULTS: 'RESULTAT',
+  'No one found. Check the spelling or try their display name.':
+    'Ingen hittades. Kontrollera stavningen eller prova deras visningsnamn.',
+  'ADDED TO YOUR CIRCLE ({n})': 'TILLAGDA I DIN CIRKEL ({n})',
+  'Adding…': 'Lägger till…',
+  'Create Circle': 'Skapa cirkel',
+  'Skip for Now': 'Hoppa över',
+  "YOU'RE ALL SET!": 'ALLT KLART!',
+  'Welcome to your': 'Välkommen till din',
+  'Your circle watches over you from here. Explore trips, wellness checks, and the fake call whenever you need them.':
+    'Din cirkel vakar över dig härifrån. Utforska resor, mående-kollar och fejksamtalet när du behöver dem.',
+  "What's next?": 'Vad händer nu?',
+  'Send a wellness check from the Home screen': 'Skicka en mående-koll från hemskärmen',
+  'Start a trip when traveling alone or at night': 'Starta en resa när du reser ensam eller på natten',
+  'Use the fake call to exit uncomfortable situations': 'Använd fejksamtalet för att ta dig ur obekväma situationer',
+  'tap Get Started again to retry.': 'tryck på Kom igång igen för att försöka igen.',
+  'Finishing…': 'Slutför…',
+  'Get Started': 'Kom igång',
+
+  // ── Received wellness checks ──────────────────────────
+  'CHECKS ON YOU': 'KOLLAR PÅ DIG',
+  'checked on you · {time}': 'kollade på dig · {time}',
+  Respond: 'Svara',
+  'You responded ✓': 'Du svarade ✓',
+  'Missed · reply anyway': 'Missad · svara ändå',
+
+  // ── Buddy closes trip ─────────────────────────────────
+  'Mark trip as completed?': 'Markera resan som avslutad?',
+  'Only do this if you know {name} arrived safely — it ends the trip and stops their live sharing.':
+    'Gör bara detta om du vet att {name} kommit fram säkert — det avslutar resan och stoppar deras live-delning.',
+  'Mark as arrived': 'Markera som framme',
+  "Couldn't end the trip": 'Kunde inte avsluta resan',
+  'Mark trip as completed': 'Markera resan som avslutad',
+
+  // ── Friend alarm screen ────────────────────────────────
+  'No live location from {name} yet.': 'Ingen live-plats från {name} än.',
+  '{name} raised an alarm': '{name} har larmat',
+  'Location may be out of date': 'Platsen kan vara inaktuell',
+  'Live · updated {time}': 'Live · uppdaterad {time}',
+  'No location shared': 'Ingen plats delad',
+  'HOW TO HELP': 'SÅ HÄR HJÄLPER DU',
+  "1. Try calling {name} right now.\n2. If they don't answer, go to their last known location if it's safe to do so.\n3. If you believe they're in danger, call 112 and share their location with the operator.":
+    '1. Ring {name} direkt.\n2. Om de inte svarar, gå till deras senast kända plats om det är säkert att göra det.\n3. Om du tror de är i fara, ring 112 och dela deras plats med operatören.',
+  'Call {name}': 'Ring {name}',
+  '📞 Call 112': '📞 Ring 112',
+
+  // ── Error feedback (round 2) ──────────────────────────
+  "Couldn't load your calendar": 'Kunde inte ladda din kalender',
+  "Couldn't load safety reports": 'Kunde inte ladda säkerhetsrapporter',
+  "Couldn't send your response": 'Kunde inte skicka ditt svar',
+  '{name} may not see that you answered. Check your connection and try again.':
+    '{name} kanske inte ser att du svarat. Kontrollera din anslutning och försök igen.',
+  "Couldn't get your location — try again": 'Kunde inte hämta din plats — försök igen',
+  "Couldn't reach your circle — try again": 'Kunde inte nå din cirkel — försök igen',
+  '⚠️ Circle NOT notified — no connection': '⚠️ Cirkeln EJ meddelad — ingen anslutning',
+  'Tap to retry · call 112 directly if this keeps failing': 'Tryck för att försöka igen · ring 112 direkt om detta fortsätter',
+  'Alarm active · Notifying circle…': 'Larm aktivt · Meddelar cirkeln…',
+  'Sharing location…': 'Delar plats…',
+
+  // ── Error feedback ────────────────────────────────────
+  "Couldn't send": 'Kunde inte skicka',
+  'Check your connection and try again.': 'Kontrollera din anslutning och försök igen.',
+  "Couldn't update photo": 'Kunde inte uppdatera foto',
+  'No places found — check the spelling, or start the trip with just a name (no route or map).':
+    'Inga platser hittades — kontrollera stavningen, eller starta resan med bara ett namn (utan rutt eller karta).',
+
+  // ── Call helper ───────────────────────────────────────
+  'No phone number': 'Inget telefonnummer',
+  "{name} hasn't added a phone number yet. Ask them to add it in their profile.":
+    '{name} har inte lagt till ett telefonnummer än. Be dem lägga till det i sin profil.',
+
   // ── Profile completeness ──────────────────────────────
+  'Add your phone number': 'Lägg till ditt telefonnummer',
   'Profile complete': 'Profil klar',
   'Complete your profile': 'Slutför din profil',
   'Add your name': 'Lägg till ditt namn',
@@ -359,6 +565,11 @@ export const sv: Record<string, string> = {
   "I've arrived": 'Jag är framme',
   '🚨  Need help': '🚨  Behöver hjälp',
   'Cancel trip': 'Avbryt resa',
+  'Need help?': 'Behöver du hjälp?',
+  '{name} is following your trip and will be alerted right away. Do you also want to alert your entire circle?':
+    '{name} följer din resa och larmas direkt. Vill du även larma hela din cirkel?',
+  'Alert {name}': 'Larma {name}',
+  '🚨 Alert entire circle': '🚨 Larma hela cirkeln',
   'You made it 🎉': 'Du är framme 🎉',
   'Welcome home 🏡': 'Välkommen hem 🏡',
   "You've arrived safely. Your trip ended and your buddy was notified.":
@@ -372,6 +583,12 @@ export const sv: Record<string, string> = {
   "Waiting for {name}'s live location… They share it while their trip is active.":
     'Väntar på {name}s live-plats… De delar den medan resan är aktiv.',
   'location may be stale': 'platsen kan vara inaktuell',
+  'TRIP IN PROGRESS': 'RESA PÅGÅR',
+  '{time} left': '{time} kvar',
+  '👀 {name} is following': '👀 {name} följer dig',
+  'sharing live location': 'delar live-plats',
+  '👀 Following your trip now': '👀 Följer din resa nu',
+  "hasn't opened your trip yet": 'har inte öppnat din resa än',
 
   // ── HomeScreen remaining ──────────────────────────────
   'just now': 'precis nu',

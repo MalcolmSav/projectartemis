@@ -68,8 +68,12 @@ export function ProfileScreen() {
   const onPickAvatar = async () => {
     if (!profile) return;
     setUploading(true);
-    await pickAndUploadAvatar(profile.id);
+    const res = await pickAndUploadAvatar(profile.id);
     setUploading(false);
+    if (res.error) {
+      Alert.alert(tr("Couldn't update photo"), res.error);
+      return;
+    }
     refreshProfile();
   };
 
@@ -115,6 +119,7 @@ export function ProfileScreen() {
         <ProfileCompleteness
           hasName={!!profile?.name?.trim()}
           hasPhoto={!!profile?.avatar_url}
+          hasPhone={!!profile?.phone?.trim()}
           hasContacts={contacts.length > 0}
           hasCircle={circleMembers.length > 0}
           hasHome={!!home}
@@ -415,15 +420,17 @@ export function ProfileScreen() {
 }
 
 function ProfileCompleteness({
-  hasName, hasPhoto, hasContacts, hasCircle, hasHome,
+  hasName, hasPhoto, hasPhone, hasContacts, hasCircle, hasHome,
 }: {
-  hasName: boolean; hasPhoto: boolean; hasContacts: boolean; hasCircle: boolean; hasHome: boolean;
+  hasName: boolean; hasPhoto: boolean; hasPhone: boolean; hasContacts: boolean; hasCircle: boolean; hasHome: boolean;
 }) {
   const t = useTheme();
   const tr = useT();
   const steps = [
     { label: tr('Add your name'), done: hasName },
     { label: tr('Add a profile photo'), done: hasPhoto },
+    // Without a phone, circle members' "Call" buttons dead-end on this user.
+    { label: tr('Add your phone number'), done: hasPhone },
     { label: tr('Add someone to your circle'), done: hasCircle },
     { label: tr('Add emergency contacts'), done: hasContacts },
     { label: tr('Set your home location'), done: hasHome },

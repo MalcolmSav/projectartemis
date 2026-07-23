@@ -23,6 +23,7 @@ interface ExpoMessage {
   data?: Record<string, unknown>
   sound?: 'default'
   priority?: 'default' | 'normal' | 'high'
+  categoryId?: string // maps to a notification category registered in the app (action buttons)
 }
 
 async function sendExpo(messages: ExpoMessage[]): Promise<void> {
@@ -128,6 +129,7 @@ serve(async (req) => {
       if (table === 'check_ins') await handleCheckIn(supabase, record)
       else if (table === 'invites') await handleInviteInsert(supabase, record)
       else if (table === 'trips') await handleTripInsert(supabase, record)
+      else if (table === 'trip_buddies') await handleTripBuddyInsert(supabase, record)
       else if (table === 'messages') await handleMessage(supabase, record)
     } else if (type === 'UPDATE') {
       if (table === 'invites') await handleInviteUpdate(supabase, record)
@@ -162,10 +164,14 @@ async function handleCheckIn(
       await sendExpo([{
         to: token,
         title: 'Wellness check 🏹',
-        body: `${senderName} is checking in on you`,
+        // Users don't know action buttons exist behind a long-press — tell them.
+        body: `${senderName} is checking in on you. Hold this notification to answer without opening the app.`,
         data: { type: 'wellness_check', fromId: userId, fromName: senderName },
         sound: 'default',
         priority: 'high',
+        // Lock-screen action buttons ("I'm OK" / "I need help") — registered
+        // client-side via registerNotificationCategories().
+        categoryId: 'wellness_check',
       }])
     }
 
@@ -317,6 +323,41 @@ async function handleTripInsert(
   }])
 }
 
+// ─── trip_buddies INSERT (an extra follower was added to a trip) ──────────────
+
+async function handleTripBuddyInsert(
+  supabase: ReturnType<typeof createClient>,
+  row: Record<string, unknown>,
+) {
+  const tripId = row.trip_id as string
+  const followerId = row.buddy_id as string
+  const { data: trip } = await supabase
+    .from('trips')
+    .select('user_id, destination, eta, status')
+    .eq('id', tripId)
+    .single()
+  if (!trip || (trip as any).status !== 'active') return
+
+  const [tripperName, followerProf] = await Promise.all([
+    getName(supabase, (trip as any).user_id as string),
+    getProfile(supabase, followerId),
+  ])
+  const token = tokenIfEnabled(followerProf, 'trips')
+  if (!token) return
+
+  const eta = (trip as any).eta as string | null
+  const destination = (trip as any).destination as string
+  await sendExpo([{
+    to: token,
+    title: `🧭 ${tripperName} started a trip`,
+    body: eta
+      ? `To ${destination} (ETA ${eta}) — you're following them`
+      : `To ${destination} — you're following them`,
+    data: { type: 'trip_started', userId: (trip as any).user_id, tripId },
+    sound: 'default',
+  }])
+}
+
 // ─── trips UPDATE (arrived / escalated / cancelled) ───────────────────────────
 
 async function handleTripUpdate(
@@ -327,6 +368,25 @@ async function handleTripUpdate(
   const buddyId = row.buddy_id as string | null
   if (!buddyId) return
 
+  // Follow receipt: buddy opened the follow screen → tell the traveler.
+  if (row.followed_at && !oldRow?.followed_at) {
+    const [buddyName, travelerProf] = await Promise.all([
+      getName(supabase, buddyId),
+      getProfile(supabase, row.user_id as string),
+    ])
+    const travelerToken = tokenIfEnabled(travelerProf, 'trips')
+    if (travelerToken) {
+      await sendExpo([{
+        to: travelerToken,
+        title: `👀 ${buddyName} is following your trip`,
+        body: `They can see your live location until you arrive at ${row.destination}`,
+        data: { type: 'trip_followed', tripId: row.id },
+        sound: 'default',
+      }])
+    }
+    return
+  }
+
   const newStatus = row.status as string
   const oldStatus = oldRow?.status as string | undefined
   if (newStatus === oldStatus) return // no status change
@@ -335,39 +395,32 @@ async function handleTripUpdate(
   const destination = row.destination as string
   const tripId = row.id as string
 
-  const [tripperName, buddyProf] = await Promise.all([
-    getName(supabase, userId),
-    getProfile(supabase, buddyId),
-  ])
+  const tripperName = await getName(supabase, userId)
 
-  const buddyToken = tokenIfEnabled(buddyProf, 'trips')
-  if (!buddyToken) return
+  // Fan out to EVERY follower: primary buddy_id + all trip_buddies rows.
+  const followerIds = new Set<string>([buddyId])
+  const { data: tb } = await supabase.from('trip_buddies').select('buddy_id').eq('trip_id', tripId)
+  ;((tb ?? []) as any[]).forEach((r) => followerIds.add(r.buddy_id as string))
+
+  const profs = await Promise.all([...followerIds].map((id) => getProfile(supabase, id)))
+  const tokens = profs.map((p) => tokenIfEnabled(p, 'trips')).filter(Boolean) as string[]
+  if (tokens.length === 0) return
+
+  const make = (title: string, body: string, dataType: string, priority?: 'high'): ExpoMessage[] =>
+    tokens.map((to) => ({
+      to, title, body,
+      data: { type: dataType, userId, tripId },
+      sound: 'default' as const,
+      ...(priority ? { priority } : {}),
+    }))
 
   if (newStatus === 'arrived') {
-    await sendExpo([{
-      to: buddyToken,
-      title: `✓ ${tripperName} arrived safely`,
-      body: `Trip to ${destination} completed`,
-      data: { type: 'trip_arrived', userId, tripId },
-      sound: 'default',
-    }])
+    await sendExpo(make(`✓ ${tripperName} arrived safely`, `Trip to ${destination} completed`, 'trip_arrived'))
   } else if (newStatus === 'escalated') {
-    await sendExpo([{
-      to: buddyToken,
-      title: `⚠️ ${tripperName} missed their ETA`,
-      body: `No arrival confirmation for trip to ${destination} — auto-escalated`,
-      data: { type: 'trip_escalated', userId, tripId },
-      sound: 'default',
-      priority: 'high',
-    }])
+    // Covers both auto-escalation (missed ETA) and a manual "Need help" tap.
+    await sendExpo(make(`⚠️ ${tripperName} needs help`, `Their trip to ${destination} was escalated — open to see their live location`, 'trip_escalated', 'high'))
   } else if (newStatus === 'cancelled') {
-    await sendExpo([{
-      to: buddyToken,
-      title: `${tripperName} cancelled their trip`,
-      body: `Trip to ${destination} was cancelled`,
-      data: { type: 'trip_cancelled', userId, tripId },
-      sound: 'default',
-    }])
+    await sendExpo(make(`${tripperName} cancelled their trip`, `Trip to ${destination} was cancelled`, 'trip_cancelled'))
   }
 }
 
@@ -379,9 +432,11 @@ async function handleMessage(
 ) {
   const senderId = row.sender_id as string
   const recipientId = row.recipient_id as string
-  const content = (row.content as string | null) ?? ''
+  // The messages table stores text in `body` (older deploys used `content`).
+  const content = ((row.body ?? row.content) as string | null) ?? ''
 
-  // Skip trip system messages — the trips INSERT webhook sends a better notification
+  // Skip trip system messages — the trips INSERT webhook already notifies the
+  // buddy; without this the trip start produces TWO pushes.
   if (content.startsWith('🧭')) return
 
   const [senderName, recipientProf] = await Promise.all([

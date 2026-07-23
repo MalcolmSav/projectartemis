@@ -23,24 +23,29 @@ export function useEvents() {
   const [events, setEvents] = useState<DBEvent[]>([]);
   const [friendEvents, setFriendEvents] = useState<FriendEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  // Distinguishes "fetch failed" from "genuinely no events" — a check-in
+  // reminder silently missing because of a failed fetch is a safety gap.
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!user) return;
     // My events
-    const { data } = await supabase
+    const { data, error: err } = await supabase
       .from('events')
       .select('*')
       .eq('user_id', user.id)
       .order('date', { ascending: true });
+    if (err) { setError(err.message); setLoading(false); return; }
     setEvents((data ?? []) as DBEvent[]);
 
     // Friends' visible events — RLS already filters by calendar_shares level
-    const { data: fe } = await supabase
+    const { data: fe, error: feErr } = await supabase
       .from('events')
       .select('*, owner:profiles!events_user_id_fkey(*)')
       .neq('user_id', user.id)
       .order('date', { ascending: true });
-    setFriendEvents((fe ?? []) as FriendEvent[]);
+    setError(feErr ? feErr.message : null);
+    if (!feErr) setFriendEvents((fe ?? []) as FriendEvent[]);
     setLoading(false);
   }, [user]);
 
@@ -84,5 +89,5 @@ export function useEvents() {
     return error ? { error: error.message } : {};
   }, []);
 
-  return { events, friendEvents, loading, refresh, addEvent, removeEvent };
+  return { events, friendEvents, loading, error, refresh, addEvent, removeEvent };
 }

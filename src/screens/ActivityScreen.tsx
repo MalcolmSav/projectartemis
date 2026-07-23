@@ -91,10 +91,14 @@ export function ActivityScreen() {
     const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
     const [{ data: checkIns }, { data: trips }] = await Promise.all([
+      // Privacy: only circle-wide events (target_id null — plain check-ins,
+      // alarms) or things aimed at me. Members' private wellness exchanges
+      // with OTHER people must not show up in my feed.
       supabase
         .from('check_ins')
         .select('id, user_id, kind, created_at')
         .in('user_id', allIds)
+        .or(`target_id.is.null,target_id.eq.${user.id}`)
         .gte('created_at', since)
         .order('created_at', { ascending: false })
         .limit(60),

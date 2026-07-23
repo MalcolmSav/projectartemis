@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { Pressable, ViewStyle } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -46,7 +47,11 @@ export function Toggle({ on, onChange, disabled, style }: Props) {
     <Pressable
       accessibilityRole="switch"
       accessibilityState={{ checked: on, disabled }}
-      onPress={() => !disabled && onChange(!on)}
+      onPress={() => {
+        if (disabled) return;
+        Haptics.selectionAsync().catch(() => {});
+        onChange(!on);
+      }}
       style={[{ width: W, height: H, opacity: disabled ? 0.5 : 1 }, style]}
     >
       <Animated.View

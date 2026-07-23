@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Pressable, Linking, ActivityIndicator } from 'react-native';
+import { View, Pressable, Linking, ActivityIndicator, Alert } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,12 +7,14 @@ import { Text, Eyebrow, PillButton, Avatar, TripMap } from '../components';
 import { IconChevron, IconPhone, IconMessage } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
 import { usePresence } from '../hooks/usePresence';
+import { useAuth } from '../state/Auth';
 import { supabase, Profile } from '../lib/supabase';
 import { Trip } from '../hooks/useTrips';
 import { palette } from '../theme/tokens';
 import { useT } from '../i18n';
 import { RootStackParamList } from '../navigation/types';
 import { formatDistance, formatDuration, LatLng } from '../lib/routing';
+import { callPhone } from '../lib/call';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -24,11 +26,22 @@ export function TripFollowScreen() {
   const route = useRoute<RouteProp<RootStackParamList, 'TripFollow'>>();
   const tripId = route.params.tripId;
   const { byUser } = usePresence();
+  const { user } = useAuth();
 
   const [trip, setTrip] = useState<Trip | null>(null);
   const [traveler, setTraveler] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(Date.now());
+  const followMarkedRef = React.useRef(false);
+
+  // Follow receipt: tell the traveler their buddy is actually watching.
+  // Sets followed_at once — the trips UPDATE webhook pushes "is following" to them.
+  useEffect(() => {
+    if (followMarkedRef.current || !trip || !user) return;
+    if (trip.status !== 'active' || trip.buddy_id !== user.id || trip.followed_at) return;
+    followMarkedRef.current = true;
+    supabase.from('trips').update({ followed_at: new Date().toISOString() }).eq('id', trip.id).then(() => {});
+  }, [trip, user]);
 
   // Load trip + traveler, and subscribe to trip changes (status, live route/remaining).
   useEffect(() => {
@@ -222,9 +235,7 @@ export function TripFollowScreen() {
           <PillButton
             style={{ flex: 1 }}
             iconLeft={<IconPhone size={14} color={palette.gold300} />}
-            onPress={() => {
-              if (traveler?.phone) Linking.openURL(`tel:${traveler.phone.replace(/\s+/g, '')}`);
-            }}
+            onPress={() => callPhone(traveler?.phone, name, tr)}
           >
             {tr('Call')}
           </PillButton>
@@ -237,6 +248,38 @@ export function TripFollowScreen() {
             {tr('Message')}
           </PillButton>
         </View>
+
+        {/* Buddy-side escape hatch: if the traveler forgot to end the trip,
+            the follower can close it — otherwise it lingers on their Home
+            forever with no way to dismiss it. Gated by the buddy RLS policy. */}
+        {trip.status === 'active' && user?.id === trip.buddy_id && (
+          <PillButton
+            variant="ghost"
+            block
+            style={{ marginTop: 8 }}
+            onPress={() => {
+              Alert.alert(
+                tr('Mark trip as completed?'),
+                tr('Only do this if you know {name} arrived safely — it ends the trip and stops their live sharing.', { name }),
+                [
+                  { text: tr('Cancel'), style: 'cancel' },
+                  {
+                    text: tr('Mark as arrived'),
+                    onPress: async () => {
+                      const { error } = await supabase
+                        .from('trips')
+                        .update({ status: 'arrived', ended_at: new Date().toISOString() })
+                        .eq('id', trip.id);
+                      if (error) Alert.alert(tr("Couldn't end the trip"), error.message);
+                    },
+                  },
+                ],
+              );
+            }}
+          >
+            {tr('Mark trip as completed')}
+          </PillButton>
+        )}
       </View>
     </View>
   );

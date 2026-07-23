@@ -4,13 +4,14 @@ import * as Battery from 'expo-battery';
 import { supabase } from '../lib/supabase';
 
 export const LOCATION_TASK = 'artemis-background-location';
+// Separate task for active trips: higher accuracy, runs regardless of the
+// general "share location" toggle, and is started/stopped with the trip.
+export const TRIP_LOCATION_TASK = 'artemis-trip-location';
 
-// This file must be imported at the root of App.tsx (top-level, outside any
-// component) so that TaskManager.defineTask runs before the OS ever tries to
-// wake the app to deliver a location update.
-TaskManager.defineTask(LOCATION_TASK, async ({ data, error }) => {
+// Shared handler: upsert the latest fix (+ battery) to public.presence.
+async function upsertPresence(data: unknown, error: { message: string } | null, tag: string) {
   if (error) {
-    console.warn('[LocationTask]', error.message);
+    console.warn(`[${tag}]`, error.message);
     return;
   }
   const locations = (data as any)?.locations as Location.LocationObject[] | undefined;
@@ -37,4 +38,10 @@ TaskManager.defineTask(LOCATION_TASK, async ({ data, error }) => {
   } catch {
     // best-effort — don't crash the background task
   }
-});
+}
+
+// This file must be imported at the root of App.tsx (top-level, outside any
+// component) so that TaskManager.defineTask runs before the OS ever tries to
+// wake the app to deliver a location update.
+TaskManager.defineTask(LOCATION_TASK, ({ data, error }) => upsertPresence(data, error, 'LocationTask'));
+TaskManager.defineTask(TRIP_LOCATION_TASK, ({ data, error }) => upsertPresence(data, error, 'TripLocationTask'));

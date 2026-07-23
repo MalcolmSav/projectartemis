@@ -7,6 +7,8 @@ import { Text, Eyebrow, PillButton } from '../components';
 import { ArtemisMark, GoogleLogo } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
 import { useAuth } from '../state/Auth';
+import { useLang, useT } from '../i18n';
+import { palette } from '../theme/tokens';
 import { supabase } from '../lib/supabase';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -16,6 +18,8 @@ type Mode = 'signIn' | 'signUp';
 export function AuthScreen() {
   const t = useTheme();
   const { signIn, signUp, signInWithGoogleToken, signInWithAppleToken } = useAuth();
+  const { lang, setLang } = useLang();
+  const tr = useT();
   const [mode, setMode] = useState<Mode>('signIn');
   const [appleAvailable, setAppleAvailable] = useState(false);
 
@@ -160,7 +164,35 @@ export function AuthScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={{ flex: 1, backgroundColor: t.colors.ivoryBg }}
     >
-      <ScrollView contentContainerStyle={{ flexGrow: 1, padding: t.spacing.pageH, paddingTop: 80 }} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={{ flexGrow: 1, padding: t.spacing.pageH, paddingTop: 56 }} keyboardShouldPersistTaps="handled">
+        {/* Language picker — available before sign-in, so onboarding itself
+            already runs in the user's language. */}
+        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 4 }}>
+          <View style={{ flexDirection: 'row', backgroundColor: t.colors.parchment, borderRadius: 999, padding: 3, borderWidth: 1, borderColor: t.colors.hairline }}>
+            {(['en', 'sv'] as const).map((l) => {
+              const active = lang === l;
+              return (
+                <Pressable
+                  key={l}
+                  onPress={() => setLang(l)}
+                  accessibilityRole="button"
+                  accessibilityLabel={l === 'en' ? 'English' : 'Svenska'}
+                  style={{
+                    paddingVertical: 5,
+                    paddingHorizontal: 12,
+                    borderRadius: 999,
+                    backgroundColor: active ? t.colors.forest700 : 'transparent',
+                  }}
+                >
+                  <Text style={{ fontFamily: t.type.bodySemibold, fontSize: 12, color: active ? palette.gold300 : t.colors.inkSoft }}>
+                    {l === 'en' ? 'EN' : 'SV'}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
         <View style={{ alignItems: 'center', marginBottom: 32 }}>
           <ArtemisMark size={56} moonColor={t.colors.forest700} />
           <Text style={{ fontFamily: t.type.display, fontSize: 32, lineHeight: 42, marginTop: 12 }}>Artemis</Text>
@@ -172,16 +204,16 @@ export function AuthScreen() {
         <Text variant="displayH1" style={{ marginBottom: 18 }}>
           {mode === 'signIn' ? (
             <>
-              Welcome{' '}
+              {tr('Welcome')}{' '}
               <Text variant="displayH1" italic accent>
-                back.
+                {tr('back.')}
               </Text>
             </>
           ) : (
             <>
-              Make your{' '}
+              {tr('Make your')}{' '}
               <Text variant="displayH1" italic accent>
-                circle.
+                {tr('circle.')}
               </Text>
             </>
           )}
@@ -196,7 +228,7 @@ export function AuthScreen() {
           onPress={handleGooglePress}
           style={{ marginBottom: 12 }}
         >
-          Continue with Google
+          {tr('Continue with Google')}
         </PillButton>
 
         {appleAvailable && (
@@ -215,15 +247,15 @@ export function AuthScreen() {
 
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20, gap: 10 }}>
           <View style={{ flex: 1, height: 1, backgroundColor: t.colors.hairline }} />
-          <Text variant="small" color={t.colors.inkMute}>or</Text>
+          <Text variant="small" color={t.colors.inkMute}>{tr('or')}</Text>
           <View style={{ flex: 1, height: 1, backgroundColor: t.colors.hairline }} />
         </View>
 
         {mode === 'signUp' && (
           <>
-            <Eyebrow style={{ marginBottom: 6 }}>USERNAME</Eyebrow>
+            <Eyebrow style={{ marginBottom: 6 }}>{tr('USERNAME')}</Eyebrow>
             <Text variant="small" color={t.colors.inkMute} style={{ marginBottom: 10 }}>
-              How others will find and add you
+              {tr('How others will find and add you')}
             </Text>
             <TextInput
               value={username}
@@ -234,11 +266,11 @@ export function AuthScreen() {
               autoCorrect={false}
               style={inputStyle(t)}
             />
-            <Eyebrow style={{ marginBottom: 6, marginTop: 18 }}>FULL NAME</Eyebrow>
+            <Eyebrow style={{ marginBottom: 6, marginTop: 18 }}>{tr('FULL NAME')}</Eyebrow>
             <TextInput
               value={name}
               onChangeText={setName}
-              placeholder="First and last name"
+              placeholder={tr('First and last name')}
               placeholderTextColor={t.colors.inkMute}
               style={inputStyle(t)}
               autoCapitalize="words"
@@ -246,7 +278,7 @@ export function AuthScreen() {
           </>
         )}
 
-        <Eyebrow style={{ marginBottom: 6 }}>EMAIL</Eyebrow>
+        <Eyebrow style={{ marginBottom: 6 }}>{tr('EMAIL')}</Eyebrow>
         <TextInput
           value={email}
           onChangeText={setEmail}
@@ -258,7 +290,7 @@ export function AuthScreen() {
           style={inputStyle(t)}
         />
 
-        <Eyebrow style={{ marginBottom: 6 }}>PASSWORD</Eyebrow>
+        <Eyebrow style={{ marginBottom: 6 }}>{tr('PASSWORD')}</Eyebrow>
         <TextInput
           value={password}
           onChangeText={setPassword}
@@ -289,14 +321,14 @@ export function AuthScreen() {
             (mode === 'signUp' && (!username.trim() || !name.trim()))
           }
         >
-          {busy ? 'Working…' : mode === 'signIn' ? 'Sign in' : 'Create account'}
+          {busy ? tr('Working…') : mode === 'signIn' ? tr('Sign in') : tr('Create account')}
         </PillButton>
 
         <Pressable onPress={() => setMode(mode === 'signIn' ? 'signUp' : 'signIn')} style={{ marginTop: 18, alignItems: 'center' }}>
           <Text variant="small" color={t.colors.inkSoft}>
-            {mode === 'signIn' ? "Don't have an account? " : 'Already have an account? '}
+            {mode === 'signIn' ? tr("Don't have an account? ") : tr('Already have an account? ')}
             <Text variant="small" weight="semibold" color={t.colors.forest700}>
-              {mode === 'signIn' ? 'Create one' : 'Sign in'}
+              {mode === 'signIn' ? tr('Create one') : tr('Sign in')}
             </Text>
           </Text>
         </Pressable>
@@ -322,13 +354,13 @@ export function AuthScreen() {
                 setMessage(null);
               } else {
                 setErr(null);
-                setMessage('Reset link sent — check your email.');
+                setMessage(tr('Reset link sent — check your email.'));
               }
             }}
             style={{ marginTop: 12, alignItems: 'center' }}
           >
             <Text variant="small" color={t.colors.gold700} weight="semibold">
-              Forgot password?
+              {tr('Forgot password?')}
             </Text>
           </Pressable>
         )}

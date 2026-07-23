@@ -7,6 +7,7 @@ import { ActivityIndicator, View, Text, ScrollView } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Notifications from 'expo-notifications';
+import * as Haptics from 'expo-haptics';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer, DefaultTheme, DarkTheme, createNavigationContainerRef } from '@react-navigation/native';
@@ -35,9 +36,16 @@ import { AuthScreen } from './src/screens/AuthScreen';
 import { OnboardingScreen } from './src/screens/OnboardingScreen';
 import { ResetPasswordScreen } from './src/screens/ResetPasswordScreen';
 import { usePresenceBroadcast } from './src/hooks/usePresenceBroadcast';
+import { useTripBroadcast } from './src/hooks/useTripBroadcast';
 import { useEvents } from './src/hooks/useEvents';
 import { useEventCheckinReminders } from './src/hooks/useEventCheckinReminders';
-import { registerPushToken } from './src/lib/notifications';
+import { useIncomingAlarms } from './src/hooks/useIncomingAlarms';
+import {
+  registerPushToken,
+  registerNotificationCategories,
+  handleWellnessAction,
+  WELLNESS_ACTION_NEED_HELP,
+} from './src/lib/notifications';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -81,6 +89,20 @@ function CalendarReminders() {
   return null;
 }
 
+// Live in-app counterpart to the `type === 'alarm'` push-tap handler above —
+// covers the case where the app is already open (foregrounded) when a circle
+// member raises an SOS, so it doesn't rely on a notification being tapped.
+function IncomingAlarmWatcher() {
+  const { alarm, clear } = useIncomingAlarms();
+  useEffect(() => {
+    if (!alarm || !navRef.isReady()) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+    navRef.navigate('FriendAlarm', { userId: alarm.userId });
+    clear();
+  }, [alarm, clear]);
+  return null;
+}
+
 function handleNotificationTap(data: Record<string, unknown> | undefined) {
   if (!data || !navRef.isReady()) return;
   const type = data.type as string | undefined;
@@ -92,8 +114,11 @@ function handleNotificationTap(data: Record<string, unknown> | undefined) {
       fromName: data.fromName as string | undefined,
     });
   } else if (type === 'alarm') {
-    // Open full-screen alarm — someone in circle raised an emergency
-    navRef.navigate('AlarmActive');
+    // Someone ELSE in the circle raised an emergency — NOT AlarmActive, which
+    // is for the raiser and would insert a second, false alarm under our own
+    // id if we (the receiver) landed there by mistake.
+    if (data.userId) navRef.navigate('FriendAlarm', { userId: data.userId as string });
+    else navRef.navigate('Tabs');
   } else if (type === 'wellness_need_help') {
     // Friend needs help — go to their profile so we can act
     if (data.fromId) navRef.navigate('CirclePerson', { id: data.fromId as string });
@@ -107,7 +132,14 @@ function handleNotificationTap(data: Record<string, unknown> | undefined) {
   } else if (type === 'trip_started' && data.tripId) {
     // Open the trip follow screen
     navRef.navigate('TripFollow', { tripId: data.tripId as string });
-  } else if (type === 'trip_arrived' || type === 'trip_cancelled' || type === 'trip_escalated') {
+  } else if (type === 'trip_followed') {
+    // Buddy started watching — open the traveler's own live trip screen
+    navRef.navigate('TripActive');
+  } else if (type === 'trip_escalated' && data.tripId) {
+    // Buddy's trip escalated (missed ETA or manual "Need help") — open the
+    // live follow map so they can act immediately.
+    navRef.navigate('TripFollow', { tripId: data.tripId as string });
+  } else if (type === 'trip_arrived' || type === 'trip_cancelled') {
     navRef.navigate('Tabs');
   } else if (type === 'message' && data.fromId) {
     // Open the chat with that person
@@ -119,6 +151,7 @@ function GatedApp() {
   const t = useTheme();
   const { loading, profileLoading, isRecovery, session, profile } = useAuth();
   usePresenceBroadcast();
+  useTripBroadcast();
 
   // Register push token once the user is signed in and their profile is loaded.
   useEffect(() => {
@@ -190,26 +223,51 @@ export default function App() {
     if (ready) SplashScreen.hideAsync().catch(() => {});
   }, [ready]);
 
-  // Handle notification taps — both from background (listener) and cold-start
-  // (getLastNotificationResponseAsync). navRef.isReady() guards against the
-  // NavigationContainer not being mounted yet on cold launch.
+  // Handle notification taps AND lock-screen action buttons — both from
+  // background (listener) and cold-start (getLastNotificationResponseAsync).
+  // navRef.isReady() guards against the NavigationContainer not being mounted
+  // yet on cold launch. Responses are deduped by notification id because the
+  // cold-start path can re-deliver one the listener already handled.
   useEffect(() => {
+    registerNotificationCategories();
+    const handled = new Set<string>();
+
+    const process = async (response: Notifications.NotificationResponse, coldStart: boolean) => {
+      const id = response.notification.request.identifier + response.actionIdentifier;
+      if (handled.has(id)) return;
+      handled.add(id);
+
+      const data = response.notification.request.content.data as Record<string, unknown>;
+      const action = response.actionIdentifier;
+
+      // Lock-screen action button ("I'm OK" / "I need help") — record the
+      // response directly; no navigation needed for the silent OK path.
+      const wasAction = await handleWellnessAction(action, data);
+      if (wasAction) {
+        // "Need help" opens the app — land on Home so they can escalate;
+        // their need-help reply is already sent.
+        if (action === WELLNESS_ACTION_NEED_HELP) {
+          const go = () => { if (navRef.isReady()) navRef.navigate('Tabs'); };
+          coldStart ? setTimeout(go, 500) : go();
+        }
+        return;
+      }
+
+      // Plain tap on the notification body — existing navigation behavior.
+      if (coldStart) {
+        setTimeout(() => handleNotificationTap(data), 500);
+      } else {
+        handleNotificationTap(data);
+      }
+    };
+
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
-      handleNotificationTap(
-        response.notification.request.content.data as Record<string, unknown>,
-      );
+      process(response, false);
     });
 
-    // Cold-start: if the user tapped a notification that launched the app
+    // Cold-start: an action/tap may have launched the app.
     Notifications.getLastNotificationResponseAsync().then((response) => {
-      if (response) {
-        // Small delay to let NavigationContainer mount
-        setTimeout(() => {
-          handleNotificationTap(
-            response.notification.request.content.data as Record<string, unknown>,
-          );
-        }, 500);
-      }
+      if (response) process(response, true);
     });
 
     return () => sub.remove();
@@ -226,6 +284,7 @@ export default function App() {
                   <StatusBar style="dark" />
                   <GatedApp />
                   <CalendarReminders />
+                  <IncomingAlarmWatcher />
                   <OfflineBanner />
                 </AppStateProvider>
               </AuthProvider>

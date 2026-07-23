@@ -22,16 +22,20 @@ export function useReports() {
   const { user } = useAuth();
   const [reports, setReports] = useState<DBReport[]>([]);
   const [loading, setLoading] = useState(true);
+  // Distinguishes "fetch failed" from "genuinely zero reports nearby" — the
+  // latter is reassuring in a safety app, the former must not look like it.
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     const cutoff = new Date(Date.now() - REPORT_TTL_MS).toISOString();
-    const { data } = await supabase
+    const { data, error: err } = await supabase
       .from('reports')
       .select('*')
       .gte('created_at', cutoff)
       .order('created_at', { ascending: false })
       .limit(200);
-    setReports((data ?? []) as DBReport[]);
+    setError(err ? err.message : null);
+    if (!err) setReports((data ?? []) as DBReport[]);
     setLoading(false);
   }, []);
 
@@ -77,5 +81,5 @@ export function useReports() {
     [],
   );
 
-  return { reports, loading, refresh, addReport, deleteReport };
+  return { reports, loading, error, refresh, addReport, deleteReport };
 }

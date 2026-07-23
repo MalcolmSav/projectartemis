@@ -1,0 +1,46 @@
+name: OTA update (free)
+
+# Pushes a JS/asset-only change over-the-air with `eas update` — no build, no
+# build credits, reaches existing installs in seconds. Use this for anything
+# that ISN'T a native change (new native module, permission, or app.json/plugin
+# change still needs a real build via ios-build.yml).
+#
+# Required repo secret: EXPO_TOKEN
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'EAS Update branch (matches the build channel)'
+        type: choice
+        default: production
+        options: [production, preview, development]
+      message:
+        description: 'Update message'
+        type: string
+        default: 'JS update'
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install EAS CLI
+        run: npm install -g eas-cli
+
+      - name: Publish OTA update
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: eas update --branch "${{ inputs.branch }}" --message "${{ inputs.message }}" --non-interactive

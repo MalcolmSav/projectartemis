@@ -12,6 +12,8 @@ import { useTheme } from '../theme/ThemeProvider';
 import { useT } from '../i18n';
 import { palette } from '../theme/tokens';
 import { supabase, Profile } from '../lib/supabase';
+import { useAuth } from '../state/Auth';
+import { callPhone } from '../lib/call';
 import { RootStackParamList } from '../navigation/types';
 
 interface RecentCheckIn {
@@ -32,17 +34,24 @@ export function CirclePersonScreen() {
   const { sendWellnessRequest } = useCheckIns();
   const { contacts: emergencyContacts } = useEmergencyContacts(route.params.id);
   const { members, remove } = useCircle();
+  const { user } = useAuth();
   const [removing, setRemoving] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
+    if (!user) return;
     (async () => {
       const [{ data: prof }, { data: ci }] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', route.params.id).maybeSingle(),
+        // Privacy: only activity that involves ME — their circle-wide events
+        // (plain check-ins, alarms: target_id null) or things aimed at me.
+        // Their wellness exchanges with OTHER circle members are none of our
+        // business and must not appear here.
         supabase
           .from('check_ins')
           .select('id, kind, note, created_at')
           .eq('user_id', route.params.id)
+          .or(`target_id.is.null,target_id.eq.${user.id}`)
           .order('created_at', { ascending: false })
           .limit(10),
       ]);
@@ -55,7 +64,7 @@ export function CirclePersonScreen() {
     return () => {
       cancelled = true;
     };
-  }, [route.params.id]);
+  }, [route.params.id, user?.id]);
 
   if (loading) {
     return (
@@ -74,6 +83,8 @@ export function CirclePersonScreen() {
 
   // Never fall back to email here — a circle member's email stays private.
   const displayName = profile.name ?? (profile.username ? `@${profile.username}` : 'Circle member');
+  // First name for the friendly button label ("Check if Emma is okay").
+  const firstName = (profile.name?.trim().split(/\s+/)[0]) || displayName;
 
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.ivoryBg }}>
@@ -111,19 +122,47 @@ export function CirclePersonScreen() {
       </LinearGradient>
 
       <ScrollView contentContainerStyle={{ paddingHorizontal: t.spacing.pageH, paddingBottom: 120 }}>
+        {/* The app's signature action — clearly labelled and explained, since
+            an icon-only button here left everyone guessing what it does. */}
+        <PillButton
+          size="lg"
+          block
+          iconLeft={<IconShield size={18} color={palette.gold300} />}
+          accessibilityLabel={tr('Check if {name} is okay', { name: displayName })}
+          onPress={async () => {
+            const res = await sendWellnessRequest(profile.id);
+            if (res.error) {
+              Alert.alert(
+                tr('Give them a moment 🌙'),
+                res.cooldownMins
+                  ? tr('You already checked on {name} recently. You can send another check in {m} min.', {
+                      name: displayName,
+                      m: res.cooldownMins,
+                    })
+                  : res.error,
+              );
+            } else {
+              Alert.alert(
+                tr('Wellness check sent 🏹'),
+                tr('{name} has 30 minutes to respond — you’ll be notified.', { name: displayName }),
+              );
+            }
+          }}
+        >
+          {tr('Check if {name} is okay', { name: firstName })}
+        </PillButton>
+        <Text variant="meta" color={t.colors.inkMute} style={{ textAlign: 'center', marginTop: 6, marginBottom: 16 }}>
+          {tr('Sends a gentle “you good?” — they tap once to reply.')}
+        </Text>
+
         <View style={{ flexDirection: 'row', gap: 8, marginBottom: 18 }}>
           <PillButton
+            variant="secondary"
             style={{ flex: 1 }}
-            iconLeft={<IconPhone size={14} color={palette.gold300} />}
-            onPress={async () => {
-              if (!profile.phone) return Alert.alert('No phone number', `${displayName} hasn't added a phone yet.`);
-              const url = `tel:${profile.phone.replace(/\s+/g, '')}`;
-              const ok = await Linking.canOpenURL(url);
-              if (ok) Linking.openURL(url);
-              else Alert.alert('Cannot place call', 'This device cannot make phone calls.');
-            }}
+            iconLeft={<IconPhone size={14} color={t.colors.forest700} />}
+            onPress={() => callPhone(profile.phone, displayName, tr)}
           >
-            Call
+            {tr('Call')}
           </PillButton>
           <PillButton
             variant="secondary"
@@ -131,19 +170,7 @@ export function CirclePersonScreen() {
             iconLeft={<IconMessage size={14} color={t.colors.forest700} />}
             onPress={() => nav.navigate('Chat', { userId: profile.id })}
           >
-            Message
-          </PillButton>
-          <PillButton
-            variant="secondary"
-            style={{ width: 52 }}
-            accessibilityLabel="Send wellness check"
-            onPress={async () => {
-              const res = await sendWellnessRequest(profile.id);
-              if (res.error) Alert.alert('Could not send', res.error);
-              else Alert.alert('Wellness check sent', `${displayName} will see it on their Home screen.`);
-            }}
-          >
-            <IconShield color={t.colors.forest700} />
+            {tr('Message')}
           </PillButton>
         </View>
 

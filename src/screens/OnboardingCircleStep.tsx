@@ -6,9 +6,11 @@ import { useAuth } from '../state/Auth';
 import { useCircle } from '../hooks/useCircle';
 import { supabase, Profile } from '../lib/supabase';
 import { personName } from '../lib/person';
+import { useT } from '../i18n';
 
 export function OnboardingCircleStep({ onComplete }: { onComplete: () => void }) {
   const t = useTheme();
+  const tr = useT();
   const { profile, refreshProfile } = useAuth();
   const { invite } = useCircle();
   const [searchQuery, setSearchQuery] = useState('');
@@ -25,16 +27,18 @@ export function OnboardingCircleStep({ onComplete }: { onComplete: () => void })
     }
 
     setSearching(true);
+    setErr(null);
     const trimmed = query.trim().toLowerCase();
 
     // Search by email or username
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('profiles')
       .select('*')
       .or(`username.ilike.%${trimmed}%,name.ilike.%${trimmed}%`)
       .neq('id', profile.id)
       .limit(10);
 
+    if (error) setErr(error.message);
     setSearchResults((data ?? []) as Profile[]);
     setSearching(false);
   };
@@ -62,23 +66,29 @@ export function OnboardingCircleStep({ onComplete }: { onComplete: () => void })
     setBusy(true);
     setErr(null);
 
+    // Onboarding shouldn't block on invite failures (offline, etc.) — but it
+    // also shouldn't silently claim a circle was created when it wasn't.
+    const failed: string[] = [];
     try {
-      // Send invites for all selected people
       for (const { profile: person, relation } of selectedPeople) {
         const result = await invite(person.email, relation);
-        if (result.error) {
-          // Continue anyway, don't fail the whole step
-        }
+        if (result.error) failed.push(personName(person));
       }
-
-      // Move to next step regardless
-      setBusy(false);
-      onComplete();
     } catch {
-      setBusy(false);
-      // Still complete the step even on error
-      onComplete();
+      // Individual invite() calls already catch their own errors — this only
+      // guards against something unexpected in the loop itself.
     }
+
+    setBusy(false);
+    if (failed.length > 0) {
+      Alert.alert(
+        selectedPeople.length === failed.length ? "Couldn't send invites" : 'Some invites failed',
+        `${failed.join(', ')} — you can invite them again from the Circle tab.`,
+        [{ text: 'Continue', onPress: onComplete }],
+      );
+      return;
+    }
+    onComplete();
   };
 
   const relationOptions = ['friend', 'family', 'partner', 'colleague', 'other'];
@@ -89,21 +99,19 @@ export function OnboardingCircleStep({ onComplete }: { onComplete: () => void })
       style={{ flex: 1, backgroundColor: t.colors.ivoryBg }}
     >
       <ScrollView contentContainerStyle={{ padding: t.spacing.pageH, paddingTop: 70 }} keyboardShouldPersistTaps="handled">
-        <Eyebrow style={{ marginBottom: 6 }}>BUILD YOUR CIRCLE</Eyebrow>
+        <Eyebrow style={{ marginBottom: 6 }}>{tr('BUILD YOUR CIRCLE')}</Eyebrow>
         <Text variant="displayH1" style={{ marginBottom: 8 }}>
-          Add people to your{' '}
+          {tr('Add people to your')}{' '}
           <Text variant="displayH1" italic accent>
-            circle.
+            {tr('circle.')}
           </Text>
         </Text>
         <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 22 }}>
-          Your circle is made of friends and trusted people inside Artemis. They can send wellness checks, see what you
-          choose to share, follow trips, view shared calendar moments, and use the safety features you enable with them.
-          You can add more later.
+          {tr('Trusted people who can check on you and see what you choose to share. You can add more anytime.')}
         </Text>
 
         {/* Search Input */}
-        <Eyebrow style={{ marginBottom: 6 }}>FIND BY USERNAME</Eyebrow>
+        <Eyebrow style={{ marginBottom: 6 }}>{tr('FIND BY USERNAME')}</Eyebrow>
         <View style={{ position: 'relative', marginBottom: 22 }}>
           <TextInput
             value={searchQuery}
@@ -111,7 +119,7 @@ export function OnboardingCircleStep({ onComplete }: { onComplete: () => void })
               setSearchQuery(val);
               search(val);
             }}
-            placeholder="@username or name"
+            placeholder={tr('@username or name')}
             placeholderTextColor={t.colors.inkMute}
             autoCapitalize="none"
             autoCorrect={false}
@@ -127,7 +135,7 @@ export function OnboardingCircleStep({ onComplete }: { onComplete: () => void })
         {/* Search Results */}
         {searchResults.length > 0 && searchQuery.trim() && (
           <View style={{ marginBottom: 22 }}>
-            <Eyebrow style={{ marginBottom: 8 }}>RESULTS</Eyebrow>
+            <Eyebrow style={{ marginBottom: 8 }}>{tr('RESULTS')}</Eyebrow>
             <Card>
               {searchResults.map((person, i) => (
                 <View key={person.id}>
@@ -147,7 +155,7 @@ export function OnboardingCircleStep({ onComplete }: { onComplete: () => void })
                       )}
                     </View>
                     <Text variant="small" color={t.colors.gold700} weight="semibold">
-                      Add
+                      {tr('Add')}
                     </Text>
                   </Pressable>
                   {i < searchResults.length - 1 && <Divider />}
@@ -159,14 +167,14 @@ export function OnboardingCircleStep({ onComplete }: { onComplete: () => void })
 
         {searchQuery.trim() && searchResults.length === 0 && !searching && (
           <Text variant="small" color={t.colors.inkMute} style={{ marginBottom: 22, textAlign: 'center' }}>
-            No one found. Check the spelling or try their display name.
+            {tr('No one found. Check the spelling or try their display name.')}
           </Text>
         )}
 
         {/* Selected People */}
         {selectedPeople.length > 0 && (
           <>
-            <Eyebrow style={{ marginBottom: 8 }}>ADDED TO YOUR CIRCLE ({selectedPeople.length})</Eyebrow>
+            <Eyebrow style={{ marginBottom: 8 }}>{tr('ADDED TO YOUR CIRCLE ({n})', { n: selectedPeople.length })}</Eyebrow>
             <Card style={{ marginBottom: 22 }}>
               {selectedPeople.map((item, i) => (
                 <View key={item.profile.id}>
@@ -212,7 +220,7 @@ export function OnboardingCircleStep({ onComplete }: { onComplete: () => void })
                     </View>
                     <Pressable onPress={() => removePerson(item.profile.id)} hitSlop={8}>
                       <Text variant="small" color={t.colors.crimson} weight="semibold">
-                        Remove
+                        {tr('Remove')}
                       </Text>
                     </Pressable>
                   </View>
@@ -230,7 +238,7 @@ export function OnboardingCircleStep({ onComplete }: { onComplete: () => void })
         )}
 
         <PillButton size="lg" block onPress={save} disabled={busy}>
-          {busy ? 'Adding…' : selectedPeople.length > 0 ? 'Create Circle' : 'Skip for Now'}
+          {busy ? tr('Adding…') : selectedPeople.length > 0 ? tr('Create Circle') : tr('Skip for Now')}
         </PillButton>
       </ScrollView>
     </KeyboardAvoidingView>

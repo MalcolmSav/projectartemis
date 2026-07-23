@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase, Profile } from '../lib/supabase';
+import { shareCurrentPosition } from '../lib/sharePosition';
 import { useAuth } from '../state/Auth';
 
 export type CheckInKind = 'ok' | 'wellness_request' | 'wellness_response' | 'alarm';
@@ -18,7 +19,7 @@ export interface PendingRequest extends CheckIn {
   from: Profile | null;
 }
 
-const WELLNESS_TIMEOUT_MS = 30 * 60 * 1000; // 30 min
+export const WELLNESS_TIMEOUT_MS = 30 * 60 * 1000; // 30 min
 
 export interface FriendAlarm {
   profile: Profile | null;
@@ -31,6 +32,16 @@ export interface FriendNeedHelp {
 }
 
 export type SentCheckStatus = 'pending' | 'ok' | 'need_help' | 'alarm';
+
+/** A wellness check someone sent TO me — persisted so it's visible in-app,
+ *  not only as a push notification that can be missed. */
+export interface ReceivedCheck {
+  id: string;
+  from: Profile | null;
+  fromId: string;
+  createdAt: string;
+  status: 'pending' | 'answered' | 'expired';
+}
 
 export interface SentCheck {
   id: string; // the wellness_request id
@@ -46,6 +57,7 @@ export function useCheckIns() {
   const [latestByUser, setLatestByUser] = useState<Record<string, CheckIn>>({});
   const [myLastOkAt, setMyLastOkAt] = useState<string | null>(null);
   const [pendingForMe, setPendingForMe] = useState<PendingRequest | null>(null);
+  const [receivedChecks, setReceivedChecks] = useState<ReceivedCheck[]>([]);
   const [friendAlarm, setFriendAlarm] = useState<FriendAlarm | null>(null);
   const [friendNeedHelp, setFriendNeedHelp] = useState<FriendNeedHelp | null>(null);
   const [sentChecks, setSentChecks] = useState<SentCheck[]>([]);
@@ -73,39 +85,52 @@ export function useCheckIns() {
     const myOk = (all ?? []).find((c: CheckIn) => c.user_id === user.id && c.kind === 'ok');
     setMyLastOkAt(myOk ? myOk.created_at : null);
 
-    // Find a pending wellness_request directed at me, not yet responded to
-    const { data: requests } = await supabase
-      .from('check_ins')
-      .select('*, from:profiles!check_ins_user_id_fkey(*)')
-      .eq('kind', 'wellness_request')
-      .eq('target_id', user.id)
-      .order('created_at', { ascending: false })
-      .limit(5);
+    // Wellness checks directed at me (last 24 h). Powers BOTH the active
+    // "respond now" hero (pendingForMe) and the persistent received-checks
+    // list, so a check missed as a push is still visible in the app.
+    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const [{ data: requests }, { data: myResp }] = await Promise.all([
+      supabase
+        .from('check_ins')
+        .select('*, from:profiles!check_ins_user_id_fkey(*)')
+        .eq('kind', 'wellness_request')
+        .eq('target_id', user.id)
+        .gte('created_at', dayAgo)
+        .order('created_at', { ascending: false })
+        .limit(10),
+      // My own responses in the same window — ONE query instead of one per request.
+      supabase
+        .from('check_ins')
+        .select('id, kind, target_id, created_at')
+        .eq('user_id', user.id)
+        .in('kind', ['wellness_response', 'ok', 'alarm'])
+        .gte('created_at', dayAgo)
+        .order('created_at', { ascending: false })
+        .limit(50),
+    ]);
 
     let chosen: PendingRequest | null = null;
-    if (requests && requests.length > 0) {
-      // Most recent that's still within window AND I haven't responded after
-      for (const req of requests as any[]) {
-        const reqTime = new Date(req.created_at).getTime();
-        if (Date.now() - reqTime > WELLNESS_TIMEOUT_MS) continue;
-        const { data: resp } = await supabase
-          .from('check_ins')
-          .select('id, kind, target_id, created_at')
-          .eq('user_id', user.id)
-          .in('kind', ['wellness_response', 'ok', 'alarm'])
-          .gte('created_at', req.created_at)
-          .order('created_at', { ascending: false })
-          .limit(20);
-        // Answered if I raised an alarm (circle-wide) or replied to THIS requester.
-        const answered = (resp ?? []).some(
-          (r: any) => r.kind === 'alarm' || r.target_id === req.user_id,
-        );
-        if (!answered) {
-          chosen = req as PendingRequest;
-          break;
-        }
-      }
+    const received: ReceivedCheck[] = [];
+    for (const req of (requests ?? []) as any[]) {
+      const reqTime = new Date(req.created_at).getTime();
+      // Answered if I raised an alarm (circle-wide) or replied to THIS requester.
+      const answered = ((myResp ?? []) as any[]).some(
+        (r) =>
+          new Date(r.created_at).getTime() >= reqTime &&
+          (r.kind === 'alarm' || r.target_id === req.user_id),
+      );
+      const withinWindow = Date.now() - reqTime <= WELLNESS_TIMEOUT_MS;
+      received.push({
+        id: req.id,
+        from: (req.from as Profile) ?? null,
+        fromId: req.user_id,
+        createdAt: req.created_at,
+        status: answered ? 'answered' : withinWindow ? 'pending' : 'expired',
+      });
+      // Most recent unanswered check still within its window → respond-now hero.
+      if (!chosen && !answered && withinWindow) chosen = req as PendingRequest;
     }
+    setReceivedChecks(received);
     setPendingForMe(chosen);
 
     // My recent wellness checks → who I checked and how each was answered.
@@ -190,7 +215,8 @@ export function useCheckIns() {
     if (!user) return;
     const topic = `checkins:${user.id}:${Math.random().toString(36).slice(2)}`;
     const ch = supabase.channel(topic);
-    ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'check_ins' }, refresh).subscribe();
+    // '*' so seen-receipt UPDATEs (seen_at) arrive live, not just new inserts.
+    ch.on('postgres_changes', { event: '*', schema: 'public', table: 'check_ins' }, refresh).subscribe();
     return () => {
       supabase.removeChannel(ch);
     };
@@ -202,6 +228,8 @@ export function useCheckIns() {
       const { error } = await supabase
         .from('check_ins')
         .insert({ user_id: user.id, kind: 'ok' as CheckInKind, note: note ?? null });
+      // Pin the check-in to a place on the circle's map (fire-and-forget).
+      shareCurrentPosition();
       return error ? { error: error.message } : {};
     },
     [user],
@@ -220,19 +248,26 @@ export function useCheckIns() {
 
   /** Ask a friend if they're OK. One check per friend per 10 min (anti-spam). */
   const sendWellnessRequest = useCallback(
-    async (friendId: string, note?: string) => {
+    async (friendId: string, note?: string): Promise<{ error?: string; cooldownMins?: number }> => {
       if (!user) return { error: 'Not signed in' };
-      const since = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+      const COOLDOWN_MS = 10 * 60 * 1000;
+      const since = new Date(Date.now() - COOLDOWN_MS).toISOString();
       const { data: recent } = await supabase
         .from('check_ins')
-        .select('id')
+        .select('id, created_at')
         .eq('user_id', user.id)
         .eq('target_id', friendId)
         .eq('kind', 'wellness_request')
         .gte('created_at', since)
+        .order('created_at', { ascending: false })
         .limit(1);
       if (recent && recent.length > 0) {
-        return { error: 'You already checked on them in the last few minutes — give them a moment to respond.' };
+        const elapsed = Date.now() - new Date((recent[0] as any).created_at).getTime();
+        const cooldownMins = Math.max(1, Math.ceil((COOLDOWN_MS - elapsed) / 60_000));
+        return {
+          error: 'You already checked on them in the last few minutes — give them a moment to respond.',
+          cooldownMins,
+        };
       }
       const { error } = await supabase.from('check_ins').insert({
         user_id: user.id,
@@ -261,6 +296,9 @@ export function useCheckIns() {
         note: note ?? null,
         target_id: kind === 'alarm' ? null : requesterId ?? null,
       });
+      // Show the sender WHERE the response came from (map pin / "Active now").
+      // Fire-and-forget so the response UI never waits on GPS.
+      shareCurrentPosition();
       if (!error) await refresh();
       return error ? { error: error.message } : {};
     },
@@ -274,6 +312,7 @@ export function useCheckIns() {
     latestByUser,
     myLastOkAt,
     pendingForMe,
+    receivedChecks,
     sentChecks,
     friendAlarm,
     clearFriendAlarm,

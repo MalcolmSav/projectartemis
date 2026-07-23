@@ -73,13 +73,16 @@ export function ChatScreen() {
       await recordAlarm(`Safety phrase from chat with ${otherName}: "${body}"`);
     }
     const res = await send(body);
-    if (res.error) setDraft(body);
+    if (res.error) {
+      setDraft(body);
+      Alert.alert(tr("Couldn't send"), tr('Check your connection and try again.'));
+    }
   };
 
   const sendLocation = async () => {
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Location permission needed', 'Allow location access to share your position.');
+      Alert.alert(tr('Location permission needed'), tr('Allow location access to share your position.'));
       return;
     }
     const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });

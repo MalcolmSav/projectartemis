@@ -99,7 +99,7 @@ export function MapScreen() {
   const nav = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const { reports, addReport, deleteReport } = useReports();
+  const { reports, error: reportsError, refresh: refreshReports, addReport, deleteReport } = useReports();
   const { members } = useCircle();
   const { byUser: presenceByUser } = usePresence();
   const [filter, setFilter] = useState<'all' | ReportKind>('all');
@@ -133,14 +133,20 @@ export function MapScreen() {
 
   useEffect(() => {
     (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        setPermDenied(true);
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          setPermDenied(true);
+          setCoords(FALLBACK);
+          return;
+        }
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        setCoords({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
+      } catch {
+        // GPS failure (no signal, timeout) — fall back rather than leaving
+        // the map blank forever, since <MapView> only renders once coords is set.
         setCoords(FALLBACK);
-        return;
       }
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      setCoords({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
     })();
   }, []);
 
@@ -515,6 +521,7 @@ export function MapScreen() {
 
             <Pressable
               onPress={() => {
+                if (reportsError) { refreshReports(); return; }
                 if (nearby.nearest && mapRef.current) {
                   mapRef.current.animateToRegion(
                     { latitude: nearby.nearest.lat, longitude: nearby.nearest.lng, latitudeDelta: 0.008, longitudeDelta: 0.008 },
@@ -523,7 +530,7 @@ export function MapScreen() {
                   setSelected(nearby.nearest);
                 }
               }}
-              disabled={!nearby.nearest}
+              disabled={!nearby.nearest && !reportsError}
               style={[
                 {
                   flexDirection: 'row',
@@ -533,31 +540,36 @@ export function MapScreen() {
                   padding: 12,
                   borderRadius: t.radii.md,
                   borderLeftWidth: 3,
-                  borderLeftColor:
-                    riskLevel === 'alarm' ? palette.crimson : riskLevel === 'warn' ? palette.statusWarn : palette.statusOk,
+                  borderLeftColor: reportsError
+                    ? palette.crimson
+                    : riskLevel === 'alarm' ? palette.crimson : riskLevel === 'warn' ? palette.statusWarn : palette.statusOk,
                 },
                 t.shadows.soft,
               ]}
             >
               <View style={{ flex: 1 }}>
-                <Text variant="small" weight="semibold">
-                  {riskLevel === 'alarm'
-                    ? 'Unsafe area nearby'
-                    : riskLevel === 'warn'
-                      ? 'Stay aware nearby'
-                      : 'Clear around you'}
+                <Text variant="small" weight="semibold" color={reportsError ? palette.crimson : undefined}>
+                  {reportsError
+                    ? "Couldn't load safety reports"
+                    : riskLevel === 'alarm'
+                      ? 'Unsafe area nearby'
+                      : riskLevel === 'warn'
+                        ? 'Stay aware nearby'
+                        : 'Clear around you'}
                 </Text>
                 <Text variant="meta" color={t.colors.inkMute}>
-                  {coords
-                    ? nearby.red + nearby.yellow > 0
-                      ? `${[
-                          nearby.red ? `${nearby.red} unsafe` : null,
-                          nearby.yellow ? `${nearby.yellow} uneasy` : null,
-                        ]
-                          .filter(Boolean)
-                          .join(' · ')} within ${RISK_RADIUS_M} m · tap to view`
-                      : `No alerts within ${RISK_RADIUS_M} m · ${visibleReports.length} reports on map`
-                    : `${visibleReports.length} reports nearby`}
+                  {reportsError
+                    ? 'Tap to retry'
+                    : coords
+                      ? nearby.red + nearby.yellow > 0
+                        ? `${[
+                            nearby.red ? `${nearby.red} unsafe` : null,
+                            nearby.yellow ? `${nearby.yellow} uneasy` : null,
+                          ]
+                            .filter(Boolean)
+                            .join(' · ')} within ${RISK_RADIUS_M} m · tap to view`
+                        : `No alerts within ${RISK_RADIUS_M} m · ${visibleReports.length} reports on map`
+                      : `${visibleReports.length} reports nearby`}
                 </Text>
               </View>
               <Toggle on={showLayer} onChange={setShowLayer} />

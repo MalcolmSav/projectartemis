@@ -14,6 +14,7 @@ import { FakeCallIncomingScreen } from '../screens/FakeCallIncomingScreen';
 import { FakeCallOnCallScreen } from '../screens/FakeCallOnCallScreen';
 import { WellnessIncomingScreen } from '../screens/WellnessIncomingScreen';
 import { AlarmActiveScreen } from '../screens/AlarmActiveScreen';
+import { FriendAlarmScreen } from '../screens/FriendAlarmScreen';
 import { EmergencyCallScreen } from '../screens/EmergencyCallScreen';
 import { ActivityScreen } from '../screens/ActivityScreen';
 
@@ -49,6 +50,11 @@ export function RootNavigator() {
       <Stack.Screen
         name="AlarmActive"
         component={AlarmActiveScreen}
+        options={{ presentation: 'fullScreenModal', animation: 'fade' }}
+      />
+      <Stack.Screen
+        name="FriendAlarm"
+        component={FriendAlarmScreen}
         options={{ presentation: 'fullScreenModal', animation: 'fade' }}
       />
       <Stack.Screen

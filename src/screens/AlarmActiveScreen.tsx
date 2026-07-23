@@ -8,6 +8,7 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 import * as Location from 'expo-location';
+import * as Haptics from 'expo-haptics';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Text, Eyebrow, PillButton, Avatar } from '../components';
@@ -20,6 +21,7 @@ import { useCircle } from '../hooks/useCircle';
 import { useEmergencyContacts } from '../hooks/useEmergencyContacts';
 import { sendSosSms } from '../lib/sos';
 import { personName } from '../lib/person';
+import { callPhone } from '../lib/call';
 import { useT } from '../i18n';
 import { RootStackParamList } from '../navigation/types';
 
@@ -70,6 +72,10 @@ export function AlarmActiveScreen() {
   const [place, setPlace] = useState<string | null>(null);
   const [placeTime, setPlaceTime] = useState<Date | null>(null);
   const [smsBusy, setSmsBusy] = useState(false);
+  // These track what's ACTUALLY true, not what the screen would like to be
+  // true — the header claim below is driven directly by these, not hardcoded.
+  const [alarmSent, setAlarmSent] = useState<'pending' | 'sent' | 'failed'>('pending');
+  const [locationShared, setLocationShared] = useState(false);
 
   useEffect(() => {
     const start = Date.now();
@@ -95,10 +101,11 @@ export function AlarmActiveScreen() {
         if (cancelled) return;
         // Share with the circle via presence.
         if (user) {
-          await supabase.from('presence').upsert(
+          const { error } = await supabase.from('presence').upsert(
             { user_id: user.id, lat: loc.coords.latitude, lng: loc.coords.longitude, updated_at: new Date().toISOString() },
             { onConflict: 'user_id' },
           );
+          if (!cancelled) setLocationShared(!error);
         }
         setPlaceTime(new Date());
         if (withGeo) {
@@ -115,7 +122,7 @@ export function AlarmActiveScreen() {
           );
         }
       } catch {
-        // best-effort
+        if (!cancelled) setLocationShared(false);
       }
     };
 
@@ -138,11 +145,22 @@ export function AlarmActiveScreen() {
     if (res.error) Alert.alert('Could not open Messages', res.error);
   };
 
-  // Persist the alarm event so the circle sees it
-  useEffect(() => {
+  // Persist the alarm event so the circle sees it + gets the push notification.
+  // This IS the notification — if it fails, the circle was never actually
+  // alerted, so the header claim below must reflect that, not assume success.
+  const sendAlarmEvent = React.useCallback(async () => {
     if (!user) return;
-    supabase.from('check_ins').insert({ user_id: user.id, kind: 'alarm', note: 'Live alarm started' });
+    setAlarmSent('pending');
+    const { error } = await supabase.from('check_ins').insert({ user_id: user.id, kind: 'alarm', note: 'Live alarm started' });
+    if (error) {
+      setAlarmSent('failed');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } else {
+      setAlarmSent('sent');
+    }
   }, [user]);
+
+  useEffect(() => { sendAlarmEvent(); }, [sendAlarmEvent]);
 
   // Pulsing red field
   const field = useSharedValue(0);
@@ -184,41 +202,72 @@ export function AlarmActiveScreen() {
           {tr('● ALARM ACTIVE')}
         </Eyebrow>
         <Text variant="displayH1" color="#F2EFE3" style={{ marginBottom: 18 }}>
-          {tr('Live location shared with your')}{' '}
-          <Text variant="displayH1" italic style={{ color: palette.gold300 }}>
-            {tr('entire circle.')}
-          </Text>
+          {alarmSent === 'failed' ? (
+            tr("Couldn't reach your circle — try again")
+          ) : (
+            <>
+              {tr('Live location shared with your')}{' '}
+              <Text variant="displayH1" italic style={{ color: palette.gold300 }}>
+                {tr('entire circle.')}
+              </Text>
+            </>
+          )}
         </Text>
 
-        {/* Alarm-active indicator */}
-        <View
-          style={{
-            backgroundColor: 'rgba(192,57,43,0.18)',
-            borderRadius: 14,
-            padding: 14,
-            marginBottom: 14,
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 12,
-          }}
-        >
-          <Animated.View
-            style={[
-              { width: 10, height: 10, borderRadius: 999, backgroundColor: palette.crimson },
-              dotStyle,
-            ]}
-          />
-          <View style={{ flex: 1 }}>
-            <Text variant="small" weight="semibold" color="#F2EFE3">
-              {tr('Alarm active · Circle notified')}
-            </Text>
-            <Text variant="meta" color={palette.crimsonSoft}>
-              {tr('Live location shared')}
-            </Text>
+        {/* Alarm-active indicator — reflects what has ACTUALLY happened */}
+        {alarmSent === 'failed' ? (
+          <Pressable
+            onPress={sendAlarmEvent}
+            style={{
+              backgroundColor: 'rgba(192,57,43,0.35)',
+              borderRadius: 14,
+              padding: 14,
+              marginBottom: 14,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 12,
+            }}
+          >
+            <View style={{ flex: 1 }}>
+              <Text variant="small" weight="semibold" color="#F2EFE3">
+                {tr('⚠️ Circle NOT notified — no connection')}
+              </Text>
+              <Text variant="meta" color={palette.crimsonSoft}>
+                {tr('Tap to retry · call 112 directly if this keeps failing')}
+              </Text>
+            </View>
+            <Text style={{ fontFamily: 'Courier', color: '#F2EFE3', fontSize: 14 }}>{fmt(elapsed)}</Text>
+          </Pressable>
+        ) : (
+          <View
+            style={{
+              backgroundColor: 'rgba(192,57,43,0.18)',
+              borderRadius: 14,
+              padding: 14,
+              marginBottom: 14,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 12,
+            }}
+          >
+            <Animated.View
+              style={[
+                { width: 10, height: 10, borderRadius: 999, backgroundColor: palette.crimson },
+                dotStyle,
+              ]}
+            />
+            <View style={{ flex: 1 }}>
+              <Text variant="small" weight="semibold" color="#F2EFE3">
+                {alarmSent === 'sent' ? tr('Alarm active · Circle notified') : tr('Alarm active · Notifying circle…')}
+              </Text>
+              <Text variant="meta" color={palette.crimsonSoft}>
+                {locationShared ? tr('Live location shared') : tr('Sharing location…')}
+              </Text>
+            </View>
+            <Waveform />
+            <Text style={{ fontFamily: 'Courier', color: '#F2EFE3', fontSize: 14 }}>{fmt(elapsed)}</Text>
           </View>
-          <Waveform />
-          <Text style={{ fontFamily: 'Courier', color: '#F2EFE3', fontSize: 14 }}>{fmt(elapsed)}</Text>
-        </View>
+        )}
 
         {/* Mini map card */}
         <View
@@ -274,9 +323,7 @@ export function AlarmActiveScreen() {
                   disabled={!m.profile.phone}
                   accessibilityRole="button"
                   accessibilityLabel={`Call ${personName(m.profile)}`}
-                  onPress={() => {
-                    if (m.profile.phone) Linking.openURL(`tel:${m.profile.phone.replace(/\s+/g, '')}`);
-                  }}
+                  onPress={() => callPhone(m.profile.phone, personName(m.profile), tr)}
                   style={{
                     width: 40,
                     height: 40,

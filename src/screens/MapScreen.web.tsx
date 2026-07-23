@@ -48,7 +48,7 @@ export function MapScreen() {
   const t = useTheme();
   const tr = useT();
   const nav = useNavigation<Nav>();
-  const { reports, addReport } = useReports();
+  const { reports, error: reportsError, refresh: refreshReports, addReport } = useReports();
   const { members } = useCircle();
   const { byUser: presenceByUser } = usePresence();
   const [filter, setFilter] = useState<'all' | ReportKind>('all');
@@ -60,14 +60,18 @@ export function MapScreen() {
 
   useEffect(() => {
     (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        setPermDenied(true);
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          setPermDenied(true);
+          setCoords(FALLBACK);
+          return;
+        }
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        setCoords({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
+      } catch {
         setCoords(FALLBACK);
-        return;
       }
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      setCoords({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
     })();
   }, []);
 
@@ -158,9 +162,10 @@ export function MapScreen() {
 
         <Pressable
           onPress={() => {
-            if (nearby.nearest) setSelected(nearby.nearest);
+            if (reportsError) refreshReports();
+            else if (nearby.nearest) setSelected(nearby.nearest);
           }}
-          disabled={!nearby.nearest}
+          disabled={!nearby.nearest && !reportsError}
           style={[
             {
               flexDirection: 'row',
@@ -170,28 +175,33 @@ export function MapScreen() {
               padding: 12,
               borderRadius: t.radii.md,
               borderLeftWidth: 3,
-              borderLeftColor:
-                riskLevel === 'alarm' ? palette.crimson : riskLevel === 'warn' ? palette.statusWarn : palette.statusOk,
+              borderLeftColor: reportsError
+                ? palette.crimson
+                : riskLevel === 'alarm' ? palette.crimson : riskLevel === 'warn' ? palette.statusWarn : palette.statusOk,
             },
             t.shadows.soft,
           ]}
         >
           <View style={{ flex: 1 }}>
-            <Text variant="small" weight="semibold">
-              {riskLevel === 'alarm'
-                ? tr('Unsafe area nearby')
-                : riskLevel === 'warn'
-                  ? tr('Stay aware nearby')
-                  : tr('Clear around you')}
+            <Text variant="small" weight="semibold" color={reportsError ? palette.crimson : undefined}>
+              {reportsError
+                ? tr("Couldn't load safety reports")
+                : riskLevel === 'alarm'
+                  ? tr('Unsafe area nearby')
+                  : riskLevel === 'warn'
+                    ? tr('Stay aware nearby')
+                    : tr('Clear around you')}
             </Text>
             <Text variant="meta" color={t.colors.inkMute}>
-              {coords
-                ? nearby.red + nearby.yellow > 0
-                  ? `${[nearby.red ? `${nearby.red} unsafe` : null, nearby.yellow ? `${nearby.yellow} uneasy` : null]
-                      .filter(Boolean)
-                      .join(' · ')} within ${RISK_RADIUS_M} m · tap to view`
-                  : `No alerts within ${RISK_RADIUS_M} m · ${reportCoords.length} reports on map`
-                : `${reportCoords.length} reports nearby`}
+              {reportsError
+                ? tr('Tap to retry')
+                : coords
+                  ? nearby.red + nearby.yellow > 0
+                    ? `${[nearby.red ? `${nearby.red} unsafe` : null, nearby.yellow ? `${nearby.yellow} uneasy` : null]
+                        .filter(Boolean)
+                        .join(' · ')} within ${RISK_RADIUS_M} m · tap to view`
+                    : `No alerts within ${RISK_RADIUS_M} m · ${reportCoords.length} reports on map`
+                  : `${reportCoords.length} reports nearby`}
             </Text>
           </View>
           <Toggle on={showLayer} onChange={setShowLayer} />
@@ -472,8 +482,8 @@ export function MapScreen() {
         open={reportOpen}
         onClose={() => setReportOpen(false)}
         onSubmit={async (r) => {
-          if (!coords) return;
-          await addReport({
+          if (!coords) return { error: tr("Couldn't get your location — try again") };
+          const res = await addReport({
             kind: r.kind,
             label: r.label,
             notes: r.notes,
@@ -481,7 +491,8 @@ export function MapScreen() {
             lng: coords.longitude,
             anon: r.anon,
           });
-          setReportOpen(false);
+          if (!res.error) setReportOpen(false);
+          return res;
         }}
       />
     </View>

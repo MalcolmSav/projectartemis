@@ -8,6 +8,10 @@
     "newArchEnabled": true,
     "scheme": "artemis",
     "icon": "./assets/icon-1024.png",
+    "runtimeVersion": { "policy": "appVersion" },
+    "updates": {
+      "url": "https://u.expo.dev/b28a3563-3015-4f10-9bc0-75610da26d85"
+    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "se.embelstudio.artemis",
@@ -18,7 +22,15 @@
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Artemis continues sharing your location with your safety circle even when the app is in the background, so your circle can always reach you in an emergency.",
         "NSLocationAlwaysUsageDescription": "Artemis continues sharing your location with your safety circle even when the app is in the background, so your circle can always reach you in an emergency.",
         "UIBackgroundModes": ["location", "fetch"],
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLName": "google-signin",
+            "CFBundleURLSchemes": [
+              "com.googleusercontent.apps.853529843469-h0ui3tlrpprnntivn803pr0qi152i3sq"
+            ]
+          }
+        ]
       }
     },
     "android": {

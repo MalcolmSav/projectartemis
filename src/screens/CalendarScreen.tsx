@@ -37,7 +37,7 @@ export function CalendarScreen() {
   const t = useTheme();
   const tr = useT();
   const { user } = useAuth();
-  const { events, friendEvents, addEvent, removeEvent, refresh } = useEvents();
+  const { events, friendEvents, error: eventsError, addEvent, removeEvent, refresh } = useEvents();
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<DBEvent | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
@@ -54,8 +54,11 @@ export function CalendarScreen() {
   };
 
   const monthKey = `${year}-${String(month0 + 1).padStart(2, '0')}`;
-  const eventsThisMonth = events.filter((e) => e.date.slice(0, 7) === monthKey);
-  const friendEventsThisMonth = friendEvents.filter((e) => e.date.slice(0, 7) === monthKey);
+  // Only today and future — a calendar of past events isn't useful here, and
+  // check-in reminders only matter going forward. YYYY-MM-DD compares lexically.
+  const todayStr = ymd(today.getFullYear(), today.getMonth(), today.getDate());
+  const eventsThisMonth = events.filter((e) => e.date.slice(0, 7) === monthKey && e.date >= todayStr);
+  const friendEventsThisMonth = friendEvents.filter((e) => e.date.slice(0, 7) === monthKey && e.date >= todayStr);
   const byDay: Record<number, DBEvent[]> = {};
   eventsThisMonth.forEach((e) => {
     const d = parseInt(e.date.slice(8, 10), 10);
@@ -134,6 +137,26 @@ export function CalendarScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onPullRefresh} tintColor={t.colors.forest700} />}
       >
         <View style={{ paddingHorizontal: t.spacing.pageH }}>
+          {eventsError && (
+            <Pressable
+              onPress={refresh}
+              style={{
+                backgroundColor: 'rgba(192,57,43,0.08)',
+                borderWidth: 1,
+                borderColor: 'rgba(192,57,43,0.25)',
+                borderRadius: t.radii.md,
+                padding: 14,
+                marginBottom: 16,
+              }}
+            >
+              <Text variant="small" weight="semibold" color={palette.crimson}>
+                {tr("Couldn't load your calendar")}
+              </Text>
+              <Text variant="meta" color={t.colors.inkSoft} style={{ marginTop: 2 }}>
+                {eventsError} · {tr('Tap to retry')}
+              </Text>
+            </Pressable>
+          )}
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
             <Pressable
               onPress={goPrev}
@@ -438,10 +461,28 @@ function EventSheet({
     }
   }, [open, editing, defaultDate, prefillDate]);
 
+  // The numeric keypad has no ":" or "-" keys, so users can't type separators —
+  // insert them automatically as digits come in.
+  const onTimeChange = (raw: string) => {
+    let d = raw.replace(/\D/g, '').slice(0, 4);
+    if (d.length >= 1 && parseInt(d[0], 10) > 2) d = '0' + d;        // "9…"  → "09…"
+    if (d.length >= 3 && parseInt(d[2], 10) > 5) d = d.slice(0, 2) + '0' + d[2]; // "21:7" → "21:07"
+    d = d.slice(0, 4);
+    setTime(d.length > 2 ? `${d.slice(0, 2)}:${d.slice(2)}` : d);
+  };
+  const onDateChange = (raw: string) => {
+    const d = raw.replace(/\D/g, '').slice(0, 8);
+    let out = d;
+    if (d.length > 6) out = `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6)}`;
+    else if (d.length > 4) out = `${d.slice(0, 4)}-${d.slice(4)}`;
+    setDate(out);
+  };
+
   const submit = async () => {
-    if (!title.trim()) return setErr('Title is required');
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return setErr('Date must be YYYY-MM-DD');
-    if (time.trim() && !/^\d{2}:\d{2}$/.test(time.trim())) return setErr('Time must be HH:MM (e.g. 21:00)');
+    if (!title.trim()) return setErr(tr('Title is required'));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return setErr(tr('Date must be YYYY-MM-DD'));
+    if (time.trim() && !/^([01]\d|2[0-3]):[0-5]\d$/.test(time.trim()))
+      return setErr(tr('Time must be HH:MM (e.g. 21:00)'));
     setBusy(true);
     const res = await onSave({
       date,
@@ -473,9 +514,9 @@ function EventSheet({
       <Eyebrow style={{ marginBottom: 6 }}>{tr('TITLE')}</Eyebrow>
       <TextInput value={title} onChangeText={setTitle} style={input} placeholderTextColor={t.colors.inkMute} placeholder="Girls night" />
       <Eyebrow style={{ marginBottom: 6 }}>{tr('DATE')}</Eyebrow>
-      <TextInput value={date} onChangeText={setDate} style={input} placeholderTextColor={t.colors.inkMute} placeholder="YYYY-MM-DD" keyboardType="numeric" />
+      <TextInput value={date} onChangeText={onDateChange} style={input} placeholderTextColor={t.colors.inkMute} placeholder="YYYY-MM-DD" keyboardType="numeric" maxLength={10} />
       <Eyebrow style={{ marginBottom: 6 }}>{tr('TIME')}</Eyebrow>
-      <TextInput value={time} onChangeText={setTime} style={input} placeholderTextColor={t.colors.inkMute} placeholder="HH:MM (optional)" keyboardType="numeric" />
+      <TextInput value={time} onChangeText={onTimeChange} style={input} placeholderTextColor={t.colors.inkMute} placeholder={tr('e.g. 2130 → 21:30 (optional)')} keyboardType="numeric" maxLength={5} />
       <Eyebrow style={{ marginBottom: 6 }}>{tr('LOCATION')}</Eyebrow>
       <TextInput value={location} onChangeText={setLocation} style={input} placeholderTextColor={t.colors.inkMute} placeholder="Stureplan" />
       <Eyebrow style={{ marginBottom: 6 }}>{tr('NOTES')}</Eyebrow>

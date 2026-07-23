@@ -3,7 +3,7 @@ import * as Haptics from 'expo-haptics';
 import { ScrollView, View, Pressable, TextInput, ActivityIndicator, Alert, RefreshControl } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { TopBar, Text, Eyebrow, Avatar, Card, PillButton, BottomSheet, Divider, EmptyState } from '../components';
+import { TopBar, Text, Eyebrow, Avatar, Card, PillButton, BottomSheet, Divider, EmptyState, GroupsSheet } from '../components';
 import { IconPlus, IconChevron, BowArrow } from '../components/icons';
 import { supabase, Profile } from '../lib/supabase';
 import { personName } from '../lib/person';
@@ -39,6 +39,7 @@ export function CircleScreen() {
   const { latestByUser } = useCheckIns();
   const { byUser: presenceByUser } = usePresence();
   const [addOpen, setAddOpen] = useState(false);
+  const [groupsOpen, setGroupsOpen] = useState(false);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -68,17 +69,30 @@ export function CircleScreen() {
     <View style={{ flex: 1, backgroundColor: t.colors.ivoryBg }}>
       <TopBar
         right={
-          <Pressable
-            onPress={() => setAddOpen(true)}
-            accessibilityRole="button"
-            accessibilityLabel="Add someone to your circle"
-            style={[
-              { width: 40, height: 40, borderRadius: 999, backgroundColor: t.colors.parchment, alignItems: 'center', justifyContent: 'center' },
-              t.shadows.soft,
-            ]}
-          >
-            <IconPlus color={t.colors.inkSoft} />
-          </Pressable>
+          <>
+            <Pressable
+              onPress={() => setGroupsOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Manage groups"
+              style={[
+                { paddingHorizontal: 14, height: 40, borderRadius: 999, backgroundColor: t.colors.parchment, alignItems: 'center', justifyContent: 'center' },
+                t.shadows.soft,
+              ]}
+            >
+              <Text variant="small" weight="semibold" color={t.colors.inkSoft}>{tr('Groups')}</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setAddOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Add someone to your circle"
+              style={[
+                { width: 40, height: 40, borderRadius: 999, backgroundColor: t.colors.parchment, alignItems: 'center', justifyContent: 'center' },
+                t.shadows.soft,
+              ]}
+            >
+              <IconPlus color={t.colors.inkSoft} />
+            </Pressable>
+          </>
         }
       />
       <ScrollView
@@ -233,6 +247,7 @@ export function CircleScreen() {
       </ScrollView>
 
       <InviteSheet open={addOpen} onClose={() => setAddOpen(false)} onSubmit={invite} />
+      <GroupsSheet visible={groupsOpen} onClose={() => setGroupsOpen(false)} members={members} />
     </View>
   );
 }

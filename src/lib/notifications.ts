@@ -2,6 +2,7 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { supabase } from './supabase';
+import { shareCurrentPosition } from './sharePosition';
 
 const PROJECT_ID = 'b28a3563-3015-4f10-9bc0-75610da26d85';
 
@@ -14,6 +15,73 @@ Notifications.setNotificationHandler({
     shouldSetBadge: false,
   }),
 });
+
+/**
+ * Actionable notification category for wellness checks: lets the recipient
+ * answer straight from the lock screen without opening the app.
+ * The edge function tags wellness pushes with `categoryId: 'wellness_check'`.
+ */
+export const WELLNESS_CATEGORY = 'wellness_check';
+export const WELLNESS_ACTION_OK = 'wellness_ok';
+export const WELLNESS_ACTION_NEED_HELP = 'wellness_need_help';
+
+export async function registerNotificationCategories(): Promise<void> {
+  if (Platform.OS === 'web') return;
+  try {
+    await Notifications.setNotificationCategoryAsync(WELLNESS_CATEGORY, [
+      {
+        identifier: WELLNESS_ACTION_OK,
+        buttonTitle: "✅ I'm OK",
+        options: { opensAppToForeground: false },
+      },
+      {
+        identifier: WELLNESS_ACTION_NEED_HELP,
+        buttonTitle: '⚠️ I need help',
+        options: { opensAppToForeground: true, isDestructive: true },
+      },
+    ]);
+  } catch {
+    // best-effort — buttons just won't appear
+  }
+}
+
+/**
+ * Record a wellness response triggered from a notification action button.
+ * Runs without React context (uses the persisted Supabase session), so it
+ * works when the "I'm OK" button is pressed from the lock screen and the app
+ * only wakes in the background. Returns true if the action was handled.
+ */
+export async function handleWellnessAction(
+  actionId: string,
+  data: Record<string, unknown> | undefined,
+): Promise<boolean> {
+  if (actionId !== WELLNESS_ACTION_OK && actionId !== WELLNESS_ACTION_NEED_HELP) return false;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) return false;
+    const fromId = (data?.fromId as string | undefined) ?? null;
+    const isOk = actionId === WELLNESS_ACTION_OK;
+    await supabase.from('check_ins').insert({
+      user_id: session.user.id,
+      kind: isOk ? 'ok' : 'wellness_response',
+      note: isOk ? 'All good (from notification)' : 'need_help',
+      target_id: fromId,
+    });
+    // Attach where the answer came from so the sender sees it on the map —
+    // works from the lock-screen action too (uses last known fix for speed).
+    shareCurrentPosition();
+    if (isOk) {
+      // App never opened — confirm on the lock screen that the reply went out.
+      await presentLocalNotification({
+        title: '✅ Response sent',
+        body: 'Your circle knows you are OK.',
+      });
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Ensure we have local-notification permission and an Android channel.

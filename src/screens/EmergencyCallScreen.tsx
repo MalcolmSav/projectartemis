@@ -19,36 +19,51 @@ export function EmergencyCallScreen() {
   const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [address, setAddress] = useState<string | null>(null);
   const [locationErr, setLocationErr] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        setLocationErr(true);
-        return;
-      }
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      const c = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
-      setCoords(c);
-
+      setLocationErr(false);
       try {
-        const geo = await Location.reverseGeocodeAsync(c);
-        if (geo && geo.length > 0) {
-          const g = geo[0];
-          const parts = [g.street, g.streetNumber, g.city].filter(Boolean);
-          if (parts.length > 0) setAddress(parts.join(' '));
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          if (!cancelled) setLocationErr(true);
+          return;
+        }
+        // GPS can hang far longer than a user reading a 112 script can wait —
+        // fail fast into a clear "couldn't get location" state instead of
+        // leaving them staring at "Getting location…" indefinitely.
+        const loc = await Promise.race([
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 10_000)),
+        ]);
+        if (cancelled) return;
+        const c = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
+        setCoords(c);
+
+        try {
+          const geo = await Location.reverseGeocodeAsync(c);
+          if (!cancelled && geo && geo.length > 0) {
+            const g = geo[0];
+            const parts = [g.street, g.streetNumber, g.city].filter(Boolean);
+            if (parts.length > 0) setAddress(parts.join(' '));
+          }
+        } catch {
+          // keep coords only — coordinates are still enough to read to a 112 operator
         }
       } catch {
-        // keep coords only
+        if (!cancelled) setLocationErr(true);
       }
     })();
-  }, []);
+    return () => { cancelled = true; };
+  }, [attempt]);
 
   const coordStr = coords
     ? `${coords.latitude.toFixed(5)}, ${coords.longitude.toFixed(5)}`
     : null;
 
-  const locationLine = address ?? coordStr ?? (locationErr ? 'Could not get location' : 'Getting location…');
+  const locationLine = address ?? coordStr ?? (locationErr ? "Couldn't get location — say your nearest street/landmark" : 'Getting location…');
 
   const name = profile?.name ?? 'Unknown';
   const phone = profile?.phone ?? null;
@@ -118,7 +133,7 @@ export function EmergencyCallScreen() {
             style={{
               fontFamily: t.type.bodySemibold,
               fontSize: 16,
-              color: '#F2EFE3',
+              color: locationErr ? palette.crimsonSoft : '#F2EFE3',
               lineHeight: 22,
               marginBottom: coords ? 4 : 0,
             }}
@@ -129,6 +144,13 @@ export function EmergencyCallScreen() {
             <Text style={{ fontFamily: t.type.body, fontSize: 13, color: SOFT }}>
               {coordStr}
             </Text>
+          )}
+          {locationErr && (
+            <Pressable onPress={() => setAttempt((n) => n + 1)} style={{ marginTop: 8 }}>
+              <Text style={{ fontFamily: t.type.bodySemibold, fontSize: 13, color: palette.crimsonSoft, textDecorationLine: 'underline' }}>
+                Try again
+              </Text>
+            </Pressable>
           )}
         </View>
 

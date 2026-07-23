@@ -12,6 +12,7 @@ export type RootStackParamList = {
   FakeCallOnCall: undefined;
   WellnessIncoming: { fromName?: string; fromId?: string; checkInId?: string } | undefined;
   AlarmActive: undefined;
+  FriendAlarm: { userId: string };
   EmergencyCall: undefined;
   Activity: undefined;
 };

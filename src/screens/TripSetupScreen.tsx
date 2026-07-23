@@ -8,6 +8,7 @@ import { Text, Eyebrow, Card, PillButton, Avatar, BottomSheet } from '../compone
 import { IconChevron, IconClock, IconLocate } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
 import { useCircle } from '../hooks/useCircle';
+import { useGroups } from '../hooks/useGroups';
 import { useTrips } from '../hooks/useTrips';
 import { useAuth } from '../state/Auth';
 import { supabase } from '../lib/supabase';
@@ -40,6 +41,7 @@ export function TripSetupScreen() {
   const tr = useT();
   const nav = useNavigation<Nav>();
   const { members } = useCircle();
+  const { groups } = useGroups();
   const { user } = useAuth();
   const { activeTrip, loading, start } = useTrips();
 
@@ -47,6 +49,7 @@ export function TripSetupScreen() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Place[]>([]);
   const [searching, setSearching] = useState(false);
+  const [noResults, setNoResults] = useState(false);
   const [place, setPlace] = useState<Place | null>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -59,8 +62,9 @@ export function TripSetupScreen() {
   const [etaHour, setEtaHour] = useState<number | null>(null);
   const [etaMinute, setEtaMinute] = useState<number | null>(null);
   const [etaOpen, setEtaOpen] = useState(false);
-  const [buddyId, setBuddyId] = useState<string | null>(members[0]?.profile.id ?? null);
-  const [locationInterval, setLocationInterval] = useState(60);
+  // Multiple followers now — the first selected is the primary buddy (ETA-miss
+  // escalation), everyone selected can watch the live trip.
+  const [buddyIds, setBuddyIds] = useState<string[]>(members[0] ? [members[0].profile.id] : []);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -76,8 +80,11 @@ export function TripSetupScreen() {
   }, [activeTrip, loading, nav]);
 
   useEffect(() => {
-    if (!buddyId && members[0]) setBuddyId(members[0].profile.id);
-  }, [members, buddyId]);
+    if (buddyIds.length === 0 && members[0]) setBuddyIds([members[0].profile.id]);
+  }, [members]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggleBuddy = (id: string) =>
+    setBuddyIds((prev) => (prev.includes(id) ? prev.filter((b) => b !== id) : [...prev, id]));
 
   // Grab current location once — used to bias search and as route origin.
   useEffect(() => {
@@ -98,6 +105,7 @@ export function TripSetupScreen() {
     setQuery(text);
     setPlace(null);
     setRoute(null);
+    setNoResults(false);
     if (searchTimer.current) clearTimeout(searchTimer.current);
     if (text.trim().length < 3) {
       setResults([]);
@@ -108,6 +116,7 @@ export function TripSetupScreen() {
       const found = await searchPlaces(text, myPos ?? undefined);
       setSearching(false);
       setResults(found);
+      setNoResults(found.length === 0);
     }, 500);
   };
 
@@ -115,6 +124,7 @@ export function TripSetupScreen() {
     setPlace(p);
     setQuery(p.name);
     setResults([]);
+    setNoResults(false);
   };
 
   // Compute the route whenever place or transport changes.
@@ -139,9 +149,10 @@ export function TripSetupScreen() {
     const res = await start({
       destination: place?.name ?? query.trim(),
       eta: etaString ?? undefined,
-      buddyId,
+      buddyIds,
       transport,
-      locationInterval,
+      // Live tracking is always as fast as possible — no user knob.
+      locationInterval: 5,
       destLat: place?.lat,
       destLng: place?.lng,
       route: route ? route.coords.map((c) => [c.longitude, c.latitude] as [number, number]) : undefined,
@@ -152,16 +163,13 @@ export function TripSetupScreen() {
     if (res.error) return setErr(res.error);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    // Let the buddy know they can follow this trip (gives them a chat heads-up).
-    if (buddyId && user) {
+    // Chat heads-up to every follower so they know they can watch.
+    if (user && buddyIds.length > 0) {
       const etaText = etaString ? ` (ETA ${etaString})` : '';
+      const body = `🧭 I just started a trip to ${place?.name ?? query.trim()}${etaText}. You can follow my live location in Artemis.`;
       supabase
         .from('messages')
-        .insert({
-          sender_id: user.id,
-          recipient_id: buddyId,
-          body: `🧭 I just started a trip to ${place?.name ?? query.trim()}${etaText}. You can follow my live location in Artemis.`,
-        })
+        .insert(buddyIds.map((b) => ({ sender_id: user.id, recipient_id: b, body })))
         .then(() => {});
     }
 
@@ -183,7 +191,7 @@ export function TripSetupScreen() {
       </View>
       <ScrollView contentContainerStyle={{ paddingHorizontal: t.spacing.pageH, paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
         <Eyebrow style={{ marginBottom: 6 }}>{tr('DESTINATION')}</Eyebrow>
-        <Card style={{ marginBottom: results.length > 0 || searching ? 4 : 14 }}>
+        <Card style={{ marginBottom: results.length > 0 || searching || noResults ? 4 : 14 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <TextInput
               value={query}
@@ -199,6 +207,15 @@ export function TripSetupScreen() {
             )}
           </View>
         </Card>
+
+        {/* No-results hint — still allows starting the trip with just a name */}
+        {noResults && !searching && results.length === 0 && (
+          <Card style={{ marginBottom: 14 }}>
+            <Text variant="meta" color={t.colors.inkMute} style={{ textAlign: 'center' }}>
+              {tr('No places found — check the spelling, or start the trip with just a name (no route or map).')}
+            </Text>
+          </Card>
+        )}
 
         {/* Search results dropdown */}
         {(results.length > 0 || searching) && (
@@ -312,88 +329,96 @@ export function TripSetupScreen() {
           </Card>
         </Pressable>
 
-        <Eyebrow style={{ marginBottom: 6 }}>{tr('BUDDY (NOTIFIED IF YOU MISS ETA)')}</Eyebrow>
+        <Eyebrow style={{ marginBottom: 6 }}>{tr('WHO FOLLOWS THIS TRIP')}</Eyebrow>
         {members.length === 0 ? (
           <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 18 }}>
             {tr('Add a friend in the Circle tab first — Trip Mode needs a buddy.')}
           </Text>
         ) : (
-          <View style={{ gap: 8, marginBottom: 18 }}>
-            {members.map((p) => {
-              const active = buddyId === p.profile.id;
-              return (
-                <Pressable
-                  key={p.edgeId}
-                  onPress={() => setBuddyId(p.profile.id)}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    padding: 12,
-                    gap: 12,
-                    borderRadius: t.radii.md,
-                    backgroundColor: active ? t.colors.forest700 : t.colors.parchment,
-                  }}
-                >
-                  <Avatar
-                    name={personName(p.profile)}
-                    size={40}
-                    photoUri={p.profile.avatar_url ?? undefined}
-                  />
-                  <View style={{ flex: 1 }}>
-                    <Text variant="body" weight="semibold" color={active ? palette.gold300 : t.colors.ink}>
-                      {personName(p.profile)}
-                    </Text>
-                    <Text variant="meta" color={active ? 'rgba(242,226,187,0.7)' : t.colors.inkMute}>
-                      {p.relation ?? tr('Friend')}
-                    </Text>
-                  </View>
-                  <View
+          <>
+            {/* Group quick-select — tap "Family" to add everyone in it at once. */}
+            {groups.length > 0 && (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+                {groups.map((g) => {
+                  const ids = g.memberIds.filter((id) => members.some((m) => m.profile.id === id));
+                  if (ids.length === 0) return null;
+                  const allIn = ids.every((id) => buddyIds.includes(id));
+                  return (
+                    <Pressable
+                      key={g.id}
+                      onPress={() =>
+                        setBuddyIds((prev) =>
+                          allIn ? prev.filter((b) => !ids.includes(b)) : Array.from(new Set([...prev, ...ids])),
+                        )
+                      }
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6,
+                        paddingVertical: 7,
+                        paddingHorizontal: 12,
+                        borderRadius: 999,
+                        backgroundColor: allIn ? t.colors.forest700 : t.colors.parchment,
+                        borderWidth: 1,
+                        borderColor: allIn ? t.colors.forest700 : t.colors.hairline,
+                      }}
+                    >
+                      <Text variant="small" weight="semibold" color={allIn ? palette.gold300 : t.colors.inkSoft}>
+                        {allIn ? '✓ ' : ''}{g.name} · {ids.length}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
+            <View style={{ gap: 8, marginBottom: 6 }}>
+              {members.map((p) => {
+                const active = buddyIds.includes(p.profile.id);
+                const isPrimary = buddyIds[0] === p.profile.id;
+                return (
+                  <Pressable
+                    key={p.edgeId}
+                    onPress={() => toggleBuddy(p.profile.id)}
                     style={{
-                      width: 22,
-                      height: 22,
-                      borderRadius: 999,
-                      borderWidth: 2,
-                      borderColor: active ? t.colors.gold300 : t.colors.hairline,
+                      flexDirection: 'row',
                       alignItems: 'center',
-                      justifyContent: 'center',
+                      padding: 12,
+                      gap: 12,
+                      borderRadius: t.radii.md,
+                      backgroundColor: active ? t.colors.forest700 : t.colors.parchment,
                     }}
                   >
-                    {active && <View style={{ width: 10, height: 10, borderRadius: 999, backgroundColor: t.colors.gold300 }} />}
-                  </View>
-                </Pressable>
-              );
-            })}
-          </View>
+                    <Avatar name={personName(p.profile)} size={40} photoUri={p.profile.avatar_url ?? undefined} />
+                    <View style={{ flex: 1 }}>
+                      <Text variant="body" weight="semibold" color={active ? palette.gold300 : t.colors.ink}>
+                        {personName(p.profile)}
+                      </Text>
+                      <Text variant="meta" color={active ? 'rgba(242,226,187,0.7)' : t.colors.inkMute}>
+                        {isPrimary ? tr('Primary · alerted if you miss your ETA') : p.relation ?? tr('Friend')}
+                      </Text>
+                    </View>
+                    <View
+                      style={{
+                        width: 22,
+                        height: 22,
+                        borderRadius: 6,
+                        borderWidth: 2,
+                        borderColor: active ? t.colors.gold300 : t.colors.hairline,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      {active && <Text style={{ color: t.colors.gold300, fontSize: 13, fontWeight: '700' }}>✓</Text>}
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text variant="meta" color={t.colors.inkMute} style={{ marginBottom: 18 }}>
+              {tr('Everyone selected can watch your live trip. The first is your primary buddy.')}
+            </Text>
+          </>
         )}
-
-        <Eyebrow style={{ marginBottom: 6 }}>{tr('LOCATION UPDATE FREQUENCY')}</Eyebrow>
-        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 18 }}>
-          {([
-            { label: '15 s', value: 15 },
-            { label: '1 min', value: 60 },
-            { label: '5 min', value: 300 },
-            { label: '10 min', value: 600 },
-          ] as const).map((opt) => {
-            const active = locationInterval === opt.value;
-            return (
-              <Pressable
-                key={opt.value}
-                onPress={() => setLocationInterval(opt.value)}
-                style={{
-                  flex: 1,
-                  alignItems: 'center',
-                  paddingVertical: 12,
-                  borderRadius: t.radii.md,
-                  backgroundColor: active ? t.colors.forest700 : t.colors.parchment,
-                }}
-              >
-                <Text variant="small" weight="semibold" color={active ? palette.gold300 : t.colors.inkSoft}>
-                  {opt.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
 
         <View style={{ backgroundColor: t.colors.gold100, padding: 14, borderRadius: t.radii.md, marginBottom: 18 }}>
           <Text variant="meta" color={t.colors.gold700} weight="semibold">
@@ -410,7 +435,7 @@ export function TripSetupScreen() {
           </Text>
         )}
 
-        <PillButton size="lg" block disabled={busy || (!place && !query.trim()) || members.length === 0} onPress={submit}>
+        <PillButton size="lg" block disabled={busy || (!place && !query.trim()) || buddyIds.length === 0} onPress={submit}>
           {busy ? tr('Starting…') : tr('▶  Start trip')}
         </PillButton>
       </ScrollView>

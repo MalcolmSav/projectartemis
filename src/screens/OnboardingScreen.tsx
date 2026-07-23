@@ -5,13 +5,8 @@ import { useTheme } from '../theme/ThemeProvider';
 import { useAuth } from '../state/Auth';
 import { supabase } from '../lib/supabase';
 import { pickAndUploadAvatar } from '../lib/avatar';
+import { useT } from '../i18n';
 import { OnboardingCircleStep } from './OnboardingCircleStep';
-
-import { OnboardingMapStep } from './OnboardingMapStep';
-import { OnboardingFakeCallStep } from './OnboardingFakeCallStep';
-import { OnboardingCalendarStep } from './OnboardingCalendarStep';
-import { OnboardingWellnessStep } from './OnboardingWellnessStep';
-import { OnboardingTripModeStep } from './OnboardingTripModeStep';
 import { OnboardingCompleteStep } from './OnboardingCompleteStep';
 
 type EmergencyContact = {
@@ -19,10 +14,15 @@ type EmergencyContact = {
   contactInfo: string;
 };
 
-type OnboardingStep = 'username' | 'intro' | 'circle' | 'emergency' | 'wellness' | 'map' | 'calendar' | 'fakecall' | 'tripmode' | 'complete';
+// Deliberately short: username → intro → circle → emergency → done.
+// Feature tutorials (wellness, map, fake call, trip mode, calendar) were cut —
+// those features are discoverable in-app, and every extra onboarding screen
+// costs completions. Only steps that CAPTURE safety-critical data remain.
+type OnboardingStep = 'username' | 'intro' | 'circle' | 'emergency' | 'complete';
 
 export function OnboardingScreen() {
   const t = useTheme();
+  const tr = useT();
   const { profile, user, refreshProfile, signOut } = useAuth();
   const needsUsername = !profile?.username;
   const [step, setStep] = useState<OnboardingStep>(needsUsername ? 'username' : 'intro');
@@ -133,7 +133,7 @@ export function OnboardingScreen() {
       }
 
       await refreshProfile();
-      setStep('wellness');
+      setStep('complete');
     } catch (e: any) {
       setErr(e?.message ?? String(e));
     }
@@ -150,26 +150,26 @@ export function OnboardingScreen() {
         >
           <ScrollView contentContainerStyle={{ flexGrow: 1, padding: t.spacing.pageH, paddingTop: 90 }} keyboardShouldPersistTaps="handled">
             <View style={{ flex: 1, justifyContent: 'center' }}>
-              <Eyebrow style={{ marginBottom: 6 }}>ONE LAST THING</Eyebrow>
+              <Eyebrow style={{ marginBottom: 6 }}>{tr('ONE LAST THING')}</Eyebrow>
               <Text variant="displayH1" style={{ marginBottom: 14 }}>
-                Choose your{' '}
-                <Text variant="displayH1" italic accent>username.</Text>
+                {tr('Choose your')}{' '}
+                <Text variant="displayH1" italic accent>{tr('username.')}</Text>
               </Text>
               <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 22 }}>
-                This is how others find and add you to their circle.
+                {tr('This is how others find and add you to their circle.')}
               </Text>
 
-              <Eyebrow style={{ marginBottom: 6 }}>FULL NAME</Eyebrow>
+              <Eyebrow style={{ marginBottom: 6 }}>{tr('FULL NAME')}</Eyebrow>
               <TextInput
                 value={nameInput}
                 onChangeText={setNameInput}
-                placeholder="First and last name"
+                placeholder={tr('First and last name')}
                 placeholderTextColor={t.colors.inkMute}
                 autoCapitalize="words"
                 style={inputStyle(t)}
               />
 
-              <Eyebrow style={{ marginBottom: 6 }}>USERNAME</Eyebrow>
+              <Eyebrow style={{ marginBottom: 6 }}>{tr('USERNAME')}</Eyebrow>
               <TextInput
                 value={usernameInput}
                 onChangeText={setUsernameInput}
@@ -190,11 +190,11 @@ export function OnboardingScreen() {
                 onPress={saveUsername}
                 disabled={busy || !usernameInput.trim() || !nameInput.trim()}
               >
-                {busy ? 'Saving…' : 'Continue'}
+                {busy ? tr('Saving…') : tr('Continue')}
               </PillButton>
 
               <PillButton variant="ghost" block style={{ marginTop: 8 }} onPress={signOut}>
-                Sign out
+                {tr('Sign out')}
               </PillButton>
             </View>
           </ScrollView>
@@ -206,46 +206,34 @@ export function OnboardingScreen() {
         >
           <ScrollView contentContainerStyle={{ flexGrow: 1, padding: t.spacing.pageH, paddingTop: 90 }} keyboardShouldPersistTaps="handled">
             <View style={{ flex: 1, justifyContent: 'center' }}>
-              <Eyebrow style={{ marginBottom: 6 }}>WELCOME TO ARTEMIS</Eyebrow>
+              <Eyebrow style={{ marginBottom: 6 }}>{tr('WELCOME TO ARTEMIS')}</Eyebrow>
               <Text variant="displayH1" style={{ marginBottom: 14 }}>
-                A quiet way to say{' '}
+                {tr('Someone always has')}{' '}
                 <Text variant="displayH1" italic accent>
-                  I got here safe.
+                  {tr('your back.')}
                 </Text>
               </Text>
               <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 22 }}>
-                Artemis is for the people who care about you — so they don't have to wonder. Share where you're at, let them check in on you, and have a quiet exit ready when you need one.
+                {tr('Share where you’re headed, check in with the people you trust, and reach help fast when something feels off. Two quick steps to begin — the rest you’ll find as you go.')}
               </Text>
 
               <Card style={{ marginBottom: 24 }}>
                 <View style={{ gap: 12 }}>
-                  <Text variant="body" weight="semibold">
-                    Quick setup:
+                  <Text variant="small" color={t.colors.inkSoft}>
+                    👥  {tr('Add trusted people to your circle.')}
                   </Text>
                   <Text variant="small" color={t.colors.inkSoft}>
-                    👥  Build your circle of trusted people.
-                  </Text>
-                  <Text variant="small" color={t.colors.inkSoft}>
-                    📍  Learn how the map and location sharing works.
-                  </Text>
-                  <Text variant="small" color={t.colors.inkSoft}>
-                    📅  Add moments when you'll be hard to reach.
-                  </Text>
-                  <Text variant="small" color={t.colors.inkSoft}>
-                    📞  Set up a fake call for quick exits.
-                  </Text>
-                  <Text variant="small" color={t.colors.inkSoft}>
-                    🌙  Trip mode for when you're out late or traveling.
+                    📞  {tr('Add an emergency contact.')}
                   </Text>
                 </View>
               </Card>
 
               <PillButton size="lg" block onPress={() => setStep('circle')}>
-                Start setup
+                {tr('Start setup')}
               </PillButton>
 
               <PillButton variant="ghost" block style={{ marginTop: 8 }} onPress={signOut}>
-                Sign out
+                {tr('Sign out')}
               </PillButton>
             </View>
           </ScrollView>
@@ -261,30 +249,29 @@ export function OnboardingScreen() {
                 <Avatar name={profile?.name || profile?.username || '?'} size={92} ring photoUri={profile?.avatar_url ?? undefined} />
               </Pressable>
               <Text variant="small" weight="semibold" color={t.colors.gold700} style={{ marginTop: 10 }}>
-                {uploading ? 'Uploading…' : profile?.avatar_url ? 'Change photo' : 'Add a photo'}
+                {uploading ? tr('Uploading…') : profile?.avatar_url ? tr('Change photo') : tr('Add photo')}
               </Text>
             </View>
 
-            <Eyebrow style={{ marginBottom: 6 }}>WELCOME</Eyebrow>
+            <Eyebrow style={{ marginBottom: 6 }}>{tr('LAST STEP')}</Eyebrow>
             <Text variant="displayH1" style={{ marginBottom: 8 }}>
-              Add your{' '}
+              {tr('Add your')}{' '}
               <Text variant="displayH1" italic accent>
-                emergency contacts.
+                {tr('emergency contacts.')}
               </Text>
             </Text>
             <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 22 }}>
-              These are not your Artemis circle. They are people someone else can reach out to if you are hard to reach,
-              like a partner, mother, or close family member. List them by priority.
+              {tr('People to call or text in an emergency — like a partner or parent. You can skip this and add them later in your profile.')}
             </Text>
 
             {emergencyContacts.map((contact, index) => (
               <View key={index} style={{ marginBottom: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: t.colors.hairline }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <Eyebrow>CONTACT {index + 1}</Eyebrow>
+                  <Eyebrow>{tr('CONTACT {n}', { n: index + 1 })}</Eyebrow>
                   {emergencyContacts.length > 1 && (
                     <Pressable onPress={() => removeEmergencyContact(index)}>
                       <Text variant="small" color={t.colors.crimson} weight="semibold">
-                        Remove
+                        {tr('Remove')}
                       </Text>
                     </Pressable>
                   )}
@@ -292,7 +279,7 @@ export function OnboardingScreen() {
                 <TextInput
                   value={contact.name}
                   onChangeText={(val) => updateEmergencyContact(index, 'name', val)}
-                  placeholder="Name or relation (e.g. Mom)"
+                  placeholder={tr('Name or relation (e.g. Mom)')}
                   placeholderTextColor={t.colors.inkMute}
                   autoCapitalize="words"
                   style={inputStyle(t)}
@@ -300,7 +287,7 @@ export function OnboardingScreen() {
                 <TextInput
                   value={contact.contactInfo}
                   onChangeText={(val) => updateEmergencyContact(index, 'contactInfo', val)}
-                  placeholder="Phone or contact info"
+                  placeholder={tr('Phone number')}
                   placeholderTextColor={t.colors.inkMute}
                   keyboardType="phone-pad"
                   style={inputStyle(t)}
@@ -310,7 +297,7 @@ export function OnboardingScreen() {
 
             <PillButton variant="ghost" block onPress={addEmergencyContact} style={{ marginBottom: 18 }}>
               <Text variant="small" weight="semibold" color={t.colors.gold700}>
-                + Add emergency contact
+                {tr('+ Add emergency contact')}
               </Text>
             </PillButton>
 
@@ -321,37 +308,17 @@ export function OnboardingScreen() {
             )}
 
             <PillButton size="lg" block onPress={save} disabled={busy}>
-              {busy ? 'Saving…' : 'Next'}
+              {busy ? tr('Saving…') : tr('Next')}
             </PillButton>
 
             <PillButton variant="ghost" block style={{ marginTop: 8 }} onPress={signOut}>
-              Sign out
+              {tr('Sign out')}
             </PillButton>
           </ScrollView>
         </KeyboardAvoidingView>
       ) : step === 'circle' ? (
-        <OnboardingCircleStep 
-          onComplete={() => setStep('emergency')} 
-        />
-      ) : step === 'wellness' ? (
-        <OnboardingWellnessStep
-          onComplete={() => setStep('map')}
-        />
-      ) : step === 'map' ? (
-        <OnboardingMapStep
-          onComplete={() => setStep('calendar')}
-        />
-      ) : step === 'calendar' ? (
-        <OnboardingCalendarStep
-          onComplete={() => setStep('fakecall')}
-        />
-      ) : step === 'fakecall' ? (
-        <OnboardingFakeCallStep 
-          onComplete={() => setStep('tripmode')} 
-        />
-      ) : step === 'tripmode' ? (
-        <OnboardingTripModeStep 
-          onComplete={() => setStep('complete')} 
+        <OnboardingCircleStep
+          onComplete={() => setStep('emergency')}
         />
       ) : step === 'complete' ? (
         <OnboardingCompleteStep 

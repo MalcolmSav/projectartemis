@@ -23,6 +23,9 @@ import {
   QuickAction,
   Avatar,
   BottomSheet,
+  useFeatureIntro,
+  FeatureIntroSheet,
+  FEATURES,
 } from '../components';
 import {
   IconBell,
@@ -39,11 +42,14 @@ import {
 import { useTheme } from '../theme/ThemeProvider';
 import { palette } from '../theme/tokens';
 import { useCircle } from '../hooks/useCircle';
-import { useCheckIns } from '../hooks/useCheckIns';
+import { useCheckIns, WELLNESS_TIMEOUT_MS, SentCheck, ReceivedCheck } from '../hooks/useCheckIns';
 import { useSafetyTimer } from '../hooks/useSafetyTimer';
 import { useFollowedTrips } from '../hooks/useFollowedTrips';
+import { useTrips } from '../hooks/useTrips';
+import { formatDuration } from '../lib/routing';
 import { useT, TFn } from '../i18n';
 import { personName } from '../lib/person';
+import { callPhone } from '../lib/call';
 import { useConversations } from '../hooks/useConversations';
 import { usePresence } from '../hooks/usePresence';
 import { useStreak } from '../hooks/useStreak';
@@ -83,12 +89,14 @@ export function HomeScreen() {
   const nav = useNavigation<Nav>();
   const { profile } = useAuth();
   const { members, pendingInvites, refresh: refreshCircle } = useCircle();
-  const { latestByUser, myLastOkAt, pendingForMe, friendAlarm, clearFriendAlarm, friendNeedHelp, clearFriendNeedHelp, recordOk, recordAlarm, sendWellnessRequest, respondWellness, refresh: refreshChecks } = useCheckIns();
+  const { latestByUser, myLastOkAt, pendingForMe, sentChecks, friendNeedHelp, clearFriendNeedHelp, recordOk, recordAlarm, sendWellnessRequest, respondWellness, refresh: refreshChecks } = useCheckIns();
   const { unreadTotal } = useConversations();
   const { byUser: presenceByUser } = usePresence();
   const { expiresAt: timerExpiresAt, expired: timerExpired, start: startTimer, clear: clearTimer } = useSafetyTimer();
   const { trips: followedTrips } = useFollowedTrips();
+  const { activeTrip } = useTrips();
   const streak = useStreak();
+  const featureIntro = useFeatureIntro();
   const [safetyOpen, setSafetyOpen] = useState(false);
   const [nowTick, setNowTick] = useState(Date.now());
   const timerFiredRef = React.useRef(false);
@@ -148,10 +156,7 @@ export function HomeScreen() {
           text: 'Call them',
           onPress: () => {
             clearFriendNeedHelp();
-            if (friendNeedHelp.profile?.phone) {
-              const { Linking } = require('react-native');
-              Linking.openURL(`tel:${friendNeedHelp.profile.phone}`);
-            }
+            callPhone(friendNeedHelp.profile?.phone, name, tr);
           },
         },
         {
@@ -167,36 +172,10 @@ export function HomeScreen() {
     );
   }, [friendNeedHelp]);
 
-  // Friend responded to my wellness check with an alarm
-  useEffect(() => {
-    if (!friendAlarm) return;
-    const name = friendAlarm.profile?.name ?? friendAlarm.profile?.email ?? 'Your friend';
-    Alert.alert(
-      '🚨 Alarm from ' + name,
-      `${name} responded to your wellness check with an alarm. They may need help.`,
-      [
-        {
-          text: 'Call them',
-          onPress: () => {
-            clearFriendAlarm();
-            if (friendAlarm.profile?.phone) {
-              const { Linking } = require('react-native');
-              Linking.openURL(`tel:${friendAlarm.profile.phone}`);
-            }
-          },
-        },
-        {
-          text: 'Go to profile',
-          onPress: () => {
-            clearFriendAlarm();
-            nav.navigate('CirclePerson', { id: friendAlarm.profile?.id ?? '' });
-          },
-        },
-        { text: 'Dismiss', style: 'cancel', onPress: clearFriendAlarm },
-      ],
-      { cancelable: false },
-    );
-  }, [friendAlarm]);
+  // A circle member raising a full alarm (the red button) is handled globally
+  // by IncomingAlarmWatcher → FriendAlarmScreen, so we deliberately do NOT show
+  // a second Alert popup here. The milder wellness "I need help" (friendNeedHelp
+  // above) keeps its lightweight prompt, since it isn't a whole-circle emergency.
 
   const lastOkLabel = myLastOkAt ? relativeTime(myLastOkAt, tr) : tr('no check-in yet');
 
@@ -348,12 +327,57 @@ export function HomeScreen() {
                   nav.navigate('Tabs' as any, { screen: 'Circle' } as any);
                   return;
                 }
-                setPickerOpen(true);
+                featureIntro.run(FEATURES.wellness, () => setPickerOpen(true));
               }}
               hasFriends={members.length > 0}
             />
           )}
         </View>
+
+        {/* Live tracker for wellness checks you sent */}
+        <SentChecksTracker
+          sentChecks={sentChecks}
+          onOpenMap={() => nav.navigate('Tabs' as any, { screen: 'Map' } as any)}
+          onOpenPerson={(id) => nav.navigate('CirclePerson', { id })}
+        />
+
+        {/* Active trip banner — always visible on Home while a trip runs */}
+        {activeTrip && (
+          <View style={{ paddingHorizontal: t.spacing.pageH, paddingTop: 12 }}>
+            <Pressable
+              onPress={() => nav.navigate('TripActive')}
+              accessibilityRole="button"
+              accessibilityLabel="Open your active trip"
+              style={{
+                backgroundColor: t.colors.forest700,
+                borderRadius: t.radii.lg,
+                padding: 16,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 14,
+              }}
+            >
+              <Text style={{ fontSize: 28, lineHeight: 34 }}>🧭</Text>
+              <View style={{ flex: 1 }}>
+                <Eyebrow color={palette.gold300}>{tr('TRIP IN PROGRESS')}</Eyebrow>
+                <Text style={{ fontFamily: t.type.display, fontSize: 19, lineHeight: 26, paddingTop: 2, color: '#fff' }} numberOfLines={1}>
+                  {activeTrip.destination}
+                </Text>
+                <Text variant="meta" color="rgba(255,255,255,0.7)" style={{ marginTop: 2 }}>
+                  {[
+                    activeTrip.remaining_s != null ? tr('{time} left', { time: formatDuration(activeTrip.remaining_s) }) : activeTrip.eta ? `ETA ${activeTrip.eta}` : null,
+                    activeTrip.followed_at
+                      ? tr('👀 {name} is following', {
+                          name: personName(members.find((m) => m.profile.id === activeTrip.buddy_id)?.profile ?? null) || tr('your buddy'),
+                        })
+                      : tr('sharing live location'),
+                  ].filter(Boolean).join('  ·  ')}
+                </Text>
+              </View>
+              <IconChevron color="rgba(255,255,255,0.6)" />
+            </Pressable>
+          </View>
+        )}
 
         {/* Active safety timer banner */}
         {timerExpiresAt && !timerExpired && (
@@ -539,13 +563,13 @@ export function HomeScreen() {
                 icon={<IconLocate color={t.colors.forest700} />}
                 label={tr('Trip Mode')}
                 sub={tr('Track me home')}
-                onPress={() => nav.navigate('Trip')}
+                onPress={() => featureIntro.run(FEATURES.trip, () => nav.navigate('Trip'))}
               />
               <QuickAction
                 icon={<IconMap color={t.colors.forest700} />}
                 label={tr('Open map')}
                 sub={tr('Reports near you')}
-                onPress={() => nav.navigate('Tabs' as any, { screen: 'Map' } as any)}
+                onPress={() => featureIntro.run(FEATURES.map, () => nav.navigate('Tabs' as any, { screen: 'Map' } as any))}
               />
             </View>
             <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -553,13 +577,13 @@ export function HomeScreen() {
                 icon={<IconPhone size={18} color={t.colors.forest700} />}
                 label={tr('Fake call')}
                 sub={tr('Way out')}
-                onPress={() => nav.navigate('FakeCall')}
+                onPress={() => featureIntro.run(FEATURES.fakecall, () => nav.navigate('FakeCall'))}
               />
               <QuickAction
                 icon={<IconShare color={t.colors.forest700} />}
                 label={tr('Share location')}
                 sub={tr('Sharing with your circle')}
-                onPress={() => nav.navigate('LocationShare')}
+                onPress={() => featureIntro.run(FEATURES.locshare, () => nav.navigate('LocationShare'))}
               />
             </View>
             <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -578,7 +602,11 @@ export function HomeScreen() {
                     : tr('Alert if I go quiet')
                 }
                 accent={!!timerExpiresAt}
-                onPress={() => setSafetyOpen(true)}
+                onPress={() =>
+                  timerExpiresAt
+                    ? setSafetyOpen(true)
+                    : featureIntro.run(FEATURES.safetytimer, () => setSafetyOpen(true))
+                }
               />
             </View>
             <Pressable
@@ -610,8 +638,26 @@ export function HomeScreen() {
         onClose={() => setPickerOpen(false)}
         onPick={async (friendId) => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-          await sendWellnessRequest(friendId);
+          const friendName = personName(members.find((m) => m.profile.id === friendId)?.profile ?? null) || tr('your friend');
+          const res = await sendWellnessRequest(friendId);
           setPickerOpen(false);
+          if (res.error) {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            Alert.alert(
+              tr('Give them a moment 🌙'),
+              res.cooldownMins
+                ? tr('You already checked on {name} recently. You can send another check in {m} min.', {
+                    name: friendName,
+                    m: res.cooldownMins,
+                  })
+                : res.error,
+            );
+          } else {
+            Alert.alert(
+              tr('Wellness check sent 🏹'),
+              tr('{name} has 30 minutes to respond — you’ll be notified.', { name: friendName }),
+            );
+          }
         }}
       />
 
@@ -621,6 +667,18 @@ export function HomeScreen() {
         onOpenCircle={() => {
           setNotifOpen(false);
           nav.navigate('Tabs' as any, { screen: 'Circle' } as any);
+        }}
+        onOpenMap={() => {
+          setNotifOpen(false);
+          nav.navigate('Tabs' as any, { screen: 'Map' } as any);
+        }}
+        onOpenWellness={(rc) => {
+          setNotifOpen(false);
+          nav.navigate('WellnessIncoming', {
+            fromName: personName(rc.from),
+            fromId: rc.fromId,
+            checkInId: rc.id,
+          });
         }}
       />
 
@@ -637,6 +695,8 @@ export function HomeScreen() {
           setSafetyOpen(false);
         }}
       />
+
+      <FeatureIntroSheet controller={featureIntro} />
     </View>
   );
 }
@@ -809,16 +869,20 @@ function NotificationsSheet({
   open,
   onClose,
   onOpenCircle,
+  onOpenMap,
+  onOpenWellness,
 }: {
   open: boolean;
   onClose: () => void;
   onOpenCircle: () => void;
+  onOpenMap: () => void;
+  onOpenWellness: (rc: ReceivedCheck) => void;
 }) {
   const t = useTheme();
   const tr = useT();
   const { pendingInvites } = useCircle();
-  const { pendingForMe, sentChecks } = useCheckIns();
-  const empty = pendingInvites.length === 0 && !pendingForMe && sentChecks.length === 0;
+  const { receivedChecks, sentChecks } = useCheckIns();
+  const empty = pendingInvites.length === 0 && receivedChecks.length === 0 && sentChecks.length === 0;
 
   const statusFor = (s: (typeof sentChecks)[number]['status']) => {
     switch (s) {
@@ -860,18 +924,49 @@ function NotificationsSheet({
         </View>
       ) : (
         <View style={{ gap: 10 }}>
-          {pendingForMe && (
-            <View
-              style={{ backgroundColor: t.colors.gold100, borderRadius: t.radii.md, padding: 14, gap: 6 }}
-            >
-              <Eyebrow color={t.colors.gold700}>{tr('WELLNESS CHECK')}</Eyebrow>
-              <Text variant="body" weight="semibold">
-                {tr('{name} is checking in on you.', { name: pendingForMe.from?.name ?? pendingForMe.from?.email ?? 'Someone' })}
-              </Text>
-              <Text variant="meta" color={t.colors.inkSoft}>
-                {tr('Respond from the Home card.')}
-              </Text>
-            </View>
+          {/* Wellness checks sent TO me — persisted here so a check missed as
+              a push notification is still discoverable in the app. */}
+          {receivedChecks.length > 0 && (
+            <>
+              <Eyebrow style={{ marginBottom: 2 }}>{tr('CHECKS ON YOU')}</Eyebrow>
+              {receivedChecks.map((rc) => {
+                const name = personName(rc.from);
+                const pendingRc = rc.status === 'pending';
+                const st =
+                  rc.status === 'answered'
+                    ? { label: tr('You responded ✓'), color: palette.statusOk }
+                    : pendingRc
+                      ? { label: tr('Respond'), color: t.colors.gold700 }
+                      : { label: tr('Missed · reply anyway'), color: palette.statusWarn };
+                return (
+                  <Pressable
+                    key={rc.id}
+                    onPress={rc.status !== 'answered' ? () => onOpenWellness(rc) : undefined}
+                    style={{
+                      backgroundColor: pendingRc ? t.colors.gold100 : t.colors.moonlight,
+                      borderRadius: t.radii.md,
+                      padding: 14,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 12,
+                    }}
+                  >
+                    <Avatar name={name} size={40} photoUri={rc.from?.avatar_url ?? undefined} />
+                    <View style={{ flex: 1 }}>
+                      <Text variant="body" weight="semibold">
+                        {name}
+                      </Text>
+                      <Text variant="meta" color={t.colors.inkMute}>
+                        {tr('checked on you · {time}', { time: relativeTime(rc.createdAt, tr) })}
+                      </Text>
+                    </View>
+                    <Text variant="small" weight="semibold" color={st.color}>
+                      {st.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </>
           )}
           {pendingInvites.map((inv) => (
             <Pressable
@@ -909,9 +1004,12 @@ function NotificationsSheet({
               {sentChecks.map((sc) => {
                 const st = statusFor(sc.status);
                 const name = personName(sc.to);
+                const responded = sc.status !== 'pending';
                 return (
-                  <View
+                  <Pressable
                     key={sc.id}
+                    onPress={responded ? onOpenMap : undefined}
+                    accessibilityLabel={responded ? `See ${name} on the map` : undefined}
                     style={{
                       backgroundColor: t.colors.moonlight,
                       borderRadius: t.radii.md,
@@ -931,12 +1029,13 @@ function NotificationsSheet({
                         {sc.seenAt && sc.status === 'pending'
                           ? `  ·  👁 ${relativeTime(sc.seenAt, tr)}`
                           : ''}
+                        {responded ? `  ·  ${tr('📍 View on map')}` : ''}
                       </Text>
                     </View>
                     <Text variant="small" weight="semibold" color={st.color}>
                       {st.label}
                     </Text>
-                  </View>
+                  </Pressable>
                 );
               })}
             </>
@@ -948,6 +1047,111 @@ function NotificationsSheet({
         {tr('Close')}
       </PillButton>
     </BottomSheet>
+  );
+}
+
+/**
+ * Live tracker for wellness checks the user has sent — shown directly on Home
+ * so nobody has to dig through the bell sheet to know how a check is going.
+ * States per row: awaiting (countdown + seen receipt + draining progress bar),
+ * answered (how, and when), or expired with no reply (a safety signal).
+ */
+function SentChecksTracker({
+  sentChecks,
+  onOpenMap,
+  onOpenPerson,
+}: {
+  sentChecks: SentCheck[];
+  onOpenMap: () => void;
+  onOpenPerson: (id: string) => void;
+}) {
+  const t = useTheme();
+  const tr = useT();
+  const [now, setNow] = useState(Date.now());
+
+  // Only track recent activity here — full history lives in the bell sheet.
+  const visible = sentChecks.filter((sc) => now - new Date(sc.createdAt).getTime() < 2 * 60 * 60 * 1000);
+  const anyPending = visible.some(
+    (sc) => sc.status === 'pending' && now - new Date(sc.createdAt).getTime() < WELLNESS_TIMEOUT_MS,
+  );
+
+  // Tick the countdowns while something is awaiting a reply.
+  useEffect(() => {
+    if (!anyPending) return;
+    const id = setInterval(() => setNow(Date.now()), 15_000);
+    return () => clearInterval(id);
+  }, [anyPending]);
+
+  if (visible.length === 0) return null;
+
+  return (
+    <View style={{ paddingHorizontal: t.spacing.pageH, paddingTop: 12 }}>
+      <Card>
+        <Eyebrow style={{ marginBottom: 4 }}>{tr('CHECKS YOU SENT')}</Eyebrow>
+        {visible.map((sc, i) => {
+          const name = personName(sc.to);
+          const ageMs = now - new Date(sc.createdAt).getTime();
+          const expired = sc.status === 'pending' && ageMs >= WELLNESS_TIMEOUT_MS;
+          const pending = sc.status === 'pending' && !expired;
+          const minsLeft = Math.max(0, Math.ceil((WELLNESS_TIMEOUT_MS - ageMs) / 60_000));
+          const pct = Math.max(0, Math.min(1, 1 - ageMs / WELLNESS_TIMEOUT_MS));
+
+          const statusEl = pending
+            ? { label: tr('Awaiting reply'), color: t.colors.inkMute }
+            : expired
+              ? { label: tr('⏱ No reply'), color: palette.statusWarn }
+              : sc.status === 'ok'
+                ? { label: tr('✓ All good'), color: palette.statusOk }
+                : sc.status === 'need_help'
+                  ? { label: tr('⚠️ Needs help'), color: palette.statusWarn }
+                  : { label: tr('🚨 Alarm'), color: palette.crimson };
+
+          const sub = pending
+            ? [
+                sc.seenAt ? `👁 ${tr('Seen')} ${relativeTime(sc.seenAt, tr)}` : tr('Sent {time}', { time: relativeTime(sc.createdAt, tr) }),
+                tr('{m} min left', { m: minsLeft }),
+              ].join('  ·  ')
+            : expired
+              ? tr('No reply — reach out to them')
+              : [
+                  sc.respondedAt ? tr('Answered {time}', { time: relativeTime(sc.respondedAt, tr) }) : '',
+                  tr('📍 View on map'),
+                ].filter(Boolean).join('  ·  ');
+
+          return (
+            <View key={sc.id}>
+              <Pressable
+                onPress={
+                  expired
+                    ? () => sc.to?.id && onOpenPerson(sc.to.id)
+                    : !pending
+                      ? onOpenMap
+                      : undefined
+                }
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 }}
+              >
+                <Avatar name={name} size={38} photoUri={sc.to?.avatar_url ?? undefined} />
+                <View style={{ flex: 1 }}>
+                  <Text variant="body" weight="semibold">{name}</Text>
+                  <Text variant="meta" color={expired ? palette.statusWarn : t.colors.inkMute} style={{ marginTop: 1 }}>
+                    {sub}
+                  </Text>
+                  {pending && (
+                    <View style={{ height: 3, backgroundColor: t.colors.hairline, borderRadius: 999, overflow: 'hidden', marginTop: 6 }}>
+                      <View style={{ height: 3, width: `${pct * 100}%` as any, backgroundColor: palette.gold500, borderRadius: 999 }} />
+                    </View>
+                  )}
+                </View>
+                <Text variant="small" weight="semibold" color={statusEl.color}>
+                  {statusEl.label}
+                </Text>
+              </Pressable>
+              {i < visible.length - 1 && <View style={{ height: 1, backgroundColor: t.colors.hairline }} />}
+            </View>
+          );
+        })}
+      </Card>
+    </View>
   );
 }
 
