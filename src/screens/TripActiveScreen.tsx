@@ -6,7 +6,7 @@ import * as Battery from 'expo-battery';
 import * as Haptics from 'expo-haptics';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Text, Eyebrow, Card, PillButton, Avatar, TripMap } from '../components';
+import { Text, Eyebrow, Card, PillButton, Avatar, TripMap, TripChatSheet } from '../components';
 import { IconChevron, IconLocate } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
 import { useTrips } from '../hooks/useTrips';
@@ -18,6 +18,7 @@ import { supabase } from '../lib/supabase';
 import { palette } from '../theme/tokens';
 import { personName } from '../lib/person';
 import { useT } from '../i18n';
+import { useTripFollowers } from '../hooks/useTripFollowers';
 import { RootStackParamList } from '../navigation/types';
 import { getRoute, formatDistance, formatDuration, LatLng, TravelMode } from '../lib/routing';
 import {
@@ -63,11 +64,13 @@ export function TripActiveScreen() {
   const { members } = useCircle();
   const { recordAlarm, recordOk } = useCheckIns();
   const { home } = useHomePlace();
+  const { followers, acceptedCount } = useTripFollowers(activeTrip);
   const { user, profile } = useAuth();
   const [now, setNow] = useState(Date.now());
   const [lastSent, setLastSent] = useState<Date | null>(null);
   const [nextIn, setNextIn] = useState<number | null>(null);
   const [etaHandled, setEtaHandled] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const [livePos, setLivePos] = useState<LatLng | null>(null);
   const [liveRoute, setLiveRoute] = useState<LatLng[] | null>(null);
   const [remaining, setRemaining] = useState<{ m: number; s: number } | null>(null);
@@ -538,28 +541,43 @@ export function TripActiveScreen() {
           </View>
         </Card>
 
-        {buddy && (
-          <Card style={{ marginBottom: 14 }}>
-            <Eyebrow>{tr('BUDDY')}</Eyebrow>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 8 }}>
-              <Avatar
-                name={personName(buddy.profile)}
-                size={44}
-                photoUri={buddy.profile.avatar_url ?? undefined}
-              />
-              <View style={{ flex: 1 }}>
-                <Text variant="body" weight="semibold">
-                  {personName(buddy.profile)}
-                </Text>
-                <Text variant="meta" color={activeTrip.followed_at ? palette.statusOk : t.colors.inkMute}>
-                  {activeTrip.followed_at
-                    ? tr('👀 Following your trip now')
-                    : `${buddy.relation ?? tr('Friend')} · ${tr("hasn't opened your trip yet")}`}
-                </Text>
+        {/* Who is actually watching. Confirmation is explicit now, so
+            "waiting to confirm" genuinely means they haven't acknowledged. */}
+        <Card style={{ marginBottom: 14 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Eyebrow>{tr('FOLLOWING YOUR TRIP')}</Eyebrow>
+            {followers.length > 0 && (
+              <Text variant="meta" color={t.colors.inkMute}>
+                {tr('{a} of {b} confirmed', { a: acceptedCount, b: followers.length })}
+              </Text>
+            )}
+          </View>
+
+          {followers.length === 0 ? (
+            <Text variant="meta" color={t.colors.inkMute} style={{ marginTop: 8 }}>
+              {tr('No one is following this trip.')}
+            </Text>
+          ) : (
+            followers.map((f) => (
+              <View key={f.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 10 }}>
+                <Avatar name={personName(f.profile)} size={38} photoUri={f.profile?.avatar_url ?? undefined} />
+                <View style={{ flex: 1 }}>
+                  <Text variant="body" weight="semibold">
+                    {personName(f.profile)}
+                  </Text>
+                  <Text variant="meta" color={f.accepted ? palette.statusOk : t.colors.inkMute}>
+                    {f.accepted ? tr('👀 Confirmed — watching now') : tr('Waiting for them to confirm…')}
+                    {f.isPrimary ? ` · ${tr('primary')}` : ''}
+                  </Text>
+                </View>
               </View>
-            </View>
-          </Card>
-        )}
+            ))
+          )}
+
+          <PillButton variant="secondary" block style={{ marginTop: 14 }} onPress={() => setChatOpen(true)}>
+            {tr('Trip chat')}
+          </PillButton>
+        </Card>
 
         <View style={{ backgroundColor: t.colors.gold100, padding: 14, borderRadius: t.radii.md, marginBottom: 22 }}>
           <Text variant="small" color={t.colors.inkSoft}>
@@ -632,6 +650,8 @@ export function TripActiveScreen() {
           {tr('Cancel trip')}
         </PillButton>
       </ScrollView>
+
+      <TripChatSheet visible={chatOpen} onClose={() => setChatOpen(false)} tripId={activeTrip.id} />
     </View>
   );
 }

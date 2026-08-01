@@ -11,9 +11,11 @@ import { supabase, Profile } from '../lib/supabase';
 import { Trip } from '../hooks/useTrips';
 import { palette } from '../theme/tokens';
 import { useT } from '../i18n';
+import { useTripFollowers } from '../hooks/useTripFollowers';
 import { RootStackParamList } from '../navigation/types';
 import { formatDistance, formatDuration, LatLng } from '../lib/routing';
 import { callPhone } from '../lib/call';
+import { TripChatSheet } from '../components';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -31,15 +33,9 @@ export function TripFollowScreen() {
   const [traveler, setTraveler] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(Date.now());
-  const followMarkedRef = React.useRef(false);
-
-  // Follow receipt: tell the traveler their buddy is actually watching.
-  useEffect(() => {
-    if (followMarkedRef.current || !trip || !user) return;
-    if (trip.status !== 'active' || trip.buddy_id !== user.id || trip.followed_at) return;
-    followMarkedRef.current = true;
-    supabase.from('trips').update({ followed_at: new Date().toISOString() }).eq('id', trip.id).then(() => {});
-  }, [trip, user]);
+  const [chatOpen, setChatOpen] = useState(false);
+  // Explicit confirmation instead of inferring it from opening the screen.
+  const { meConfirmed, meIsFollower, busy: followBusy, confirmFollowing } = useTripFollowers(trip);
 
   useEffect(() => {
     let cancelled = false;
@@ -226,6 +222,26 @@ export function TripFollowScreen() {
           </Text>
         </View>
 
+        {trip.status === 'active' && meIsFollower && !meConfirmed && (
+          <PillButton
+            size="lg"
+            block
+            style={{ marginTop: 4, marginBottom: 8 }}
+            disabled={followBusy}
+            onPress={async () => {
+              const res = await confirmFollowing();
+              if (res.error) Alert.alert(tr("Couldn't confirm"), res.error);
+            }}
+          >
+            {followBusy ? tr('Confirming…') : tr("✓ I'm following this trip")}
+          </PillButton>
+        )}
+        {meConfirmed && (
+          <Text variant="meta" color={palette.statusOk} style={{ marginTop: 6, textAlign: 'center' }}>
+            {tr("✓ {name} knows you're watching", { name })}
+          </Text>
+        )}
+
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
           <PillButton
             style={{ flex: 1 }}
@@ -238,16 +254,16 @@ export function TripFollowScreen() {
             variant="secondary"
             style={{ flex: 1 }}
             iconLeft={<IconMessage size={14} color={t.colors.forest700} />}
-            onPress={() => nav.navigate('Chat', { userId: trip.user_id })}
+            onPress={() => setChatOpen(true)}
           >
-            {tr('Message')}
+            {tr('Trip chat')}
           </PillButton>
         </View>
 
         {/* Buddy-side escape hatch: if the traveler forgot to end the trip,
             the follower can close it — otherwise it lingers on their Home
             forever with no way to dismiss it. Gated by the buddy RLS policy. */}
-        {trip.status === 'active' && user?.id === trip.buddy_id && (
+        {trip.status === 'active' && meIsFollower && (
           <PillButton
             variant="ghost"
             block
@@ -276,6 +292,8 @@ export function TripFollowScreen() {
           </PillButton>
         )}
       </View>
+
+      <TripChatSheet visible={chatOpen} onClose={() => setChatOpen(false)} tripId={trip.id} />
     </View>
   );
 }

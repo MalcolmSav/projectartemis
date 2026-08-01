@@ -15,3 +15,4 @@ export { EmptyState } from './EmptyState';
 export { TripMap } from './TripMap';
 export { useFeatureIntro, FeatureIntroSheet, FEATURES } from './FeatureIntro';
 export { GroupsSheet } from './GroupsSheet';
+export { TripChatSheet } from './TripChatSheet';

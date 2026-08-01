@@ -365,6 +365,25 @@ export const sv: Record<string, string> = {
   '“{name}” will be removed. Members stay in your circle.':
     '"{name}" tas bort. Medlemmarna finns kvar i din cirkel.',
   '{n} members': '{n} medlemmar',
+  // ── Trip chat & follow confirmation ───────────────────
+  'Trip chat': 'Reschatt',
+  'Everyone following this trip can see these messages.':
+    'Alla som följer denna resa kan se dessa meddelanden.',
+  'No messages yet — say something.': 'Inga meddelanden än — säg något.',
+  'Message…': 'Meddelande…',
+  Send: 'Skicka',
+  "✓ I'm following this trip": '✓ Jag följer denna resa',
+  'Confirming…': 'Bekräftar…',
+  "Couldn't confirm": 'Kunde inte bekräfta',
+  "✓ {name} knows you're watching": '✓ {name} vet att du följer',
+  'FOLLOWING YOUR TRIP': 'FÖLJER DIN RESA',
+  '{a} of {b} confirmed': '{a} av {b} bekräftade',
+  'No one is following this trip.': 'Ingen följer denna resa.',
+  '👀 Confirmed — watching now': '👀 Bekräftat — följer nu',
+  'Waiting for them to confirm…': 'Väntar på att de bekräftar…',
+  primary: 'primär',
+  '{name} is now following this trip': '{name} följer nu denna resa',
+
   'EXACT DESTINATION': 'EXAKT DESTINATION',
   'Tap the map to fine-tune the exact entrance — helpful when a street number isn’t on the map.':
     'Tryck på kartan för att finjustera exakt entré — bra när ett gatunummer saknas på kartan.',
