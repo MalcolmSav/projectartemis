@@ -23,9 +23,16 @@ interface Props {
   onClose: () => void;
   children: React.ReactNode;
   maxHeight?: number;
+  /**
+   * Fired once the close animation has finished AND the underlying Modal has
+   * unmounted. Use this to chain anything that presents another Modal — iOS
+   * cannot present a modal while another is still dismissing (it fails
+   * silently and can leave an invisible view swallowing all touches).
+   */
+  onClosed?: () => void;
 }
 
-export function BottomSheet({ visible, onClose, children, maxHeight }: Props) {
+export function BottomSheet({ visible, onClose, children, maxHeight, onClosed }: Props) {
   const t = useTheme();
   const { height } = useWindowDimensions();
   const cap = maxHeight ?? Math.round(height * 0.86);
@@ -33,8 +40,23 @@ export function BottomSheet({ visible, onClose, children, maxHeight }: Props) {
   const v = useSharedValue(0);
   const [internalVisible, setInternalVisible] = React.useState(visible);
 
+  // Keep the latest callback without re-running the animation effect.
+  const onClosedRef = React.useRef(onClosed);
+  onClosedRef.current = onClosed;
+  // Guards against firing onClosed on mount when visible starts false.
+  const wasOpenRef = React.useRef(visible);
+
+  const finishClose = React.useCallback(() => {
+    setInternalVisible(false);
+    if (wasOpenRef.current) {
+      wasOpenRef.current = false;
+      onClosedRef.current?.();
+    }
+  }, []);
+
   useEffect(() => {
     if (visible) {
+      wasOpenRef.current = true;
       setInternalVisible(true);
       v.value = withTiming(1, { duration: t.motion.bottomSheet, easing: Easing.bezier(0.2, 0.8, 0.2, 1) });
     } else {
@@ -42,11 +64,11 @@ export function BottomSheet({ visible, onClose, children, maxHeight }: Props) {
         0,
         { duration: t.motion.bottomSheet, easing: Easing.bezier(0.2, 0.8, 0.2, 1) },
         (done) => {
-          if (done) runOnJS(setInternalVisible)(false);
+          if (done) runOnJS(finishClose)();
         },
       );
     }
-  }, [visible, t.motion.bottomSheet, v]);
+  }, [visible, t.motion.bottomSheet, v, finishClose]);
 
   const overlayStyle = useAnimatedStyle(() => ({ opacity: v.value * 0.5 }));
   const sheetStyle = useAnimatedStyle(() => ({

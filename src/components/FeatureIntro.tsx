@@ -86,28 +86,39 @@ export function useFeatureIntro() {
 
   const proceed = useCallback(() => {
     if (active) AsyncStorage.setItem(PREFIX + active.key, '1').catch(() => {});
-    const action = pending.current;
-    pending.current = null;
+    // Keep pending.current — it fires from handleClosed once this sheet's
+    // Modal has fully dismissed AND unmounted. Running it on a timer while the
+    // sheet was still animating meant we tried to present a second Modal
+    // mid-dismissal, which iOS drops silently and leaves an invisible view
+    // eating every tap until the app is restarted.
     setActive(null);
-    // Let the sheet dismiss before the action navigates.
-    setTimeout(() => action?.(), 180);
   }, [active]);
 
   const close = useCallback(() => {
+    // Dismissed without continuing — drop the queued action.
     pending.current = null;
     setActive(null);
   }, []);
 
-  return { active, run, proceed, close };
+  /** Wired to BottomSheet's onClosed — safe point to present the next screen. */
+  const handleClosed = useCallback(() => {
+    const action = pending.current;
+    pending.current = null;
+    // Small buffer so React's unmount of this Modal is committed natively
+    // before the action opens another one.
+    if (action) setTimeout(action, 50);
+  }, []);
+
+  return { active, run, proceed, close, handleClosed };
 }
 
 export function FeatureIntroSheet({ controller }: { controller: ReturnType<typeof useFeatureIntro> }) {
   const t = useTheme();
   const tr = useT();
-  const { active, proceed, close } = controller;
+  const { active, proceed, close, handleClosed } = controller;
 
   return (
-    <BottomSheet visible={!!active} onClose={close}>
+    <BottomSheet visible={!!active} onClose={close} onClosed={handleClosed}>
       {active && (
         <View style={{ alignItems: 'center', paddingTop: 4 }}>
           <View
