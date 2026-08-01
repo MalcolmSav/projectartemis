@@ -365,6 +365,9 @@ export const sv: Record<string, string> = {
   '“{name}” will be removed. Members stay in your circle.':
     '"{name}" tas bort. Medlemmarna finns kvar i din cirkel.',
   '{n} members': '{n} medlemmar',
+  'EXACT DESTINATION': 'EXAKT DESTINATION',
+  'Tap the map to fine-tune the exact entrance — helpful when a street number isn’t on the map.':
+    'Tryck på kartan för att finjustera exakt entré — bra när ett gatunummer saknas på kartan.',
   'WHO FOLLOWS THIS TRIP': 'VILKA FÖLJER DENNA RESA',
   'Primary · alerted if you miss your ETA': 'Primär · larmas om du missar ankomsttiden',
   'Everyone selected can watch your live trip. The first is your primary buddy.':

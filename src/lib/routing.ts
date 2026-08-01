@@ -40,9 +40,28 @@ const headers: Record<string, string> =
 
 /** Search for places by free-text query. Biased toward the given location if provided. */
 export async function searchPlaces(query: string, near?: LatLng): Promise<Place[]> {
-  if (!query.trim()) return [];
+  const q = query.trim();
+  if (!q) return [];
+
+  const results = await runSearch(q, near);
+  if (results.length > 0) return results;
+
+  // OpenStreetMap frequently has no house numbers (searching "Åkerbyvägen 82"
+  // returns nothing at all, even though the street exists). Rather than a dead
+  // end, retry without the trailing number so the user gets the street and can
+  // drop the pin on the exact entrance themselves.
+  // Drops the house number whether it ends the query ("Åkerbyvägen 82") or is
+  // followed by a city ("Storgatan 5, Täby" → "Storgatan, Täby").
+  const withoutNumber = q.replace(/\s+\d+\s*[a-zA-Z]?(?=\s*,|$)/, '').trim();
+  if (withoutNumber && withoutNumber !== q) {
+    return runSearch(withoutNumber, near);
+  }
+  return [];
+}
+
+async function runSearch(query: string, near?: LatLng): Promise<Place[]> {
   const params = new URLSearchParams({
-    q: query.trim(),
+    q: query,
     format: 'json',
     limit: '6',
     addressdetails: '0',
@@ -57,11 +76,28 @@ export async function searchPlaces(query: string, near?: LatLng): Promise<Place[
   if (!res.ok) return [];
   const data = (await res.json()) as { display_name: string; lat: string; lon: string }[];
   return data.map((d) => ({
-    name: d.display_name.split(',')[0],
+    name: shortLabel(d.display_name),
     fullName: d.display_name,
     lat: parseFloat(d.lat),
     lng: parseFloat(d.lon),
   }));
+}
+
+/**
+ * A human label for a search hit.
+ *
+ * Nominatim returns the house number as its own leading component
+ * ("82, Åkerbyvägen, Grindtorp, Täby, …"), so naively taking the first
+ * component labelled the result just "82" — which reads as a broken result
+ * and hides the fact that the exact address WAS found. Recombine those into
+ * the natural "Åkerbyvägen 82".
+ */
+function shortLabel(displayName: string): string {
+  const parts = displayName.split(',').map((s) => s.trim()).filter(Boolean);
+  if (parts.length === 0) return displayName;
+  const [first, second] = parts;
+  if (/^\d+\s*[a-zA-Z]?$/.test(first) && second) return `${second} ${first}`;
+  return first;
 }
 
 /** Fetch a route between two points for the given travel mode. */

@@ -18,10 +18,24 @@ interface Props {
   travelerPhoto?: string | null;
   /** Keep the camera following the live position. */
   follow?: boolean;
+  /** Tap the map to place/move the destination pin (picker mode). */
+  onMapPress?: (c: LatLng) => void;
+  /** Initial zoom span in degrees — smaller is closer in. */
+  initialDelta?: number;
   style?: ViewStyle;
 }
 
-export function TripMap({ route, position, destination, travelerName = '?', travelerPhoto, follow = true, style }: Props) {
+export function TripMap({
+  route,
+  position,
+  destination,
+  travelerName = '?',
+  travelerPhoto,
+  follow = true,
+  onMapPress,
+  initialDelta = 0.02,
+  style,
+}: Props) {
   const t = useTheme();
   const mapRef = useRef<MapView | null>(null);
   const fittedRef = useRef(false);
@@ -55,7 +69,13 @@ export function TripMap({ route, position, destination, travelerName = '?', trav
       ref={mapRef}
       provider={PROVIDER_DEFAULT}
       style={[{ flex: 1 }, style]}
-      initialRegion={{ ...initial, latitudeDelta: 0.02, longitudeDelta: 0.02 }}
+      initialRegion={{
+        latitude: initial.latitude,
+        longitude: initial.longitude,
+        latitudeDelta: initialDelta,
+        longitudeDelta: initialDelta,
+      }}
+      onPress={onMapPress ? (e) => onMapPress(e.nativeEvent.coordinate) : undefined}
     >
       {route && route.length > 1 && (
         <>

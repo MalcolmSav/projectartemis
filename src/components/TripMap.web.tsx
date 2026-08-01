@@ -16,6 +16,10 @@ interface Props {
   travelerName?: string;
   travelerPhoto?: string | null;
   follow?: boolean;
+  /** Tap the map to place/move the destination pin (picker mode). */
+  onMapPress?: (c: LatLng) => void;
+  /** Accepted for API parity with the native map; zoom here is fit automatically. */
+  initialDelta?: number;
   style?: ViewStyle;
 }
 
@@ -28,8 +32,25 @@ function latToWorldY(lat: number, zoom: number) {
   const rad = (lat * Math.PI) / 180;
   return ((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * TILE * 2 ** zoom;
 }
+// Inverse Web Mercator — turns world pixels back into lat/lng for tap-to-place.
+function worldXToLng(x: number, zoom: number) {
+  return (x / (TILE * 2 ** zoom)) * 360 - 180;
+}
+function worldYToLat(y: number, zoom: number) {
+  const n = Math.PI - 2 * Math.PI * (y / (TILE * 2 ** zoom));
+  return (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
+}
 
-export function TripMap({ route, position, destination, travelerName = '?', travelerPhoto, follow = true, style }: Props) {
+export function TripMap({
+  route,
+  position,
+  destination,
+  travelerName = '?',
+  travelerPhoto,
+  follow = true,
+  onMapPress,
+  style,
+}: Props) {
   const t = useTheme();
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const zoomRef = useRef<number | null>(null);
@@ -92,8 +113,12 @@ export function TripMap({ route, position, destination, travelerName = '?', trav
       x: lngToWorldX(p.longitude, zoom) - originX,
       y: latToWorldY(p.latitude, zoom) - originY,
     });
+    const unproject = (x: number, y: number): LatLng => ({
+      longitude: worldXToLng(x + originX, zoom),
+      latitude: worldYToLat(y + originY, zoom),
+    });
 
-    return { zoom, tiles, project };
+    return { zoom, tiles, project, unproject };
   }, [size, allPoints, follow, position]);
 
   const routePoints = view && route && route.length > 1
@@ -105,6 +130,15 @@ export function TripMap({ route, position, destination, travelerName = '?', trav
 
   return (
     <View
+      {...(onMapPress && view
+        ? {
+            onStartShouldSetResponder: () => true,
+            onResponderRelease: (e: any) => {
+              const { locationX, locationY } = e.nativeEvent;
+              onMapPress(view.unproject(locationX, locationY));
+            },
+          }
+        : {})}
       style={[{ flex: 1, overflow: 'hidden', backgroundColor: t.colors.moonlight }, style]}
       onLayout={(e) => setSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
     >

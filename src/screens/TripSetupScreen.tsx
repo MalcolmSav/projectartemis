@@ -4,7 +4,7 @@ import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Text, Eyebrow, Card, PillButton, Avatar, BottomSheet } from '../components';
+import { Text, Eyebrow, Card, PillButton, Avatar, BottomSheet, TripMap } from '../components';
 import { IconChevron, IconClock, IconLocate } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
 import { useCircle } from '../hooks/useCircle';
@@ -51,6 +51,9 @@ export function TripSetupScreen() {
   const [searching, setSearching] = useState(false);
   const [noResults, setNoResults] = useState(false);
   const [place, setPlace] = useState<Place | null>(null);
+  // The exact destination the user confirms on the map — this, not the raw
+  // geocoder hit, is what the trip routes to.
+  const [pin, setPin] = useState<LatLng | null>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Route
@@ -122,25 +125,28 @@ export function TripSetupScreen() {
 
   const pickPlace = (p: Place) => {
     setPlace(p);
+    // Search results are street-level at best (OSM rarely has house numbers),
+    // so seed the pin at the match and let the user drop it on the exact door.
+    setPin({ latitude: p.lat, longitude: p.lng });
     setQuery(p.name);
     setResults([]);
     setNoResults(false);
   };
 
-  // Compute the route whenever place or transport changes.
+  // Compute the route whenever the pin (exact destination) or transport changes.
   useEffect(() => {
-    if (!place || !myPos) { setRoute(null); return; }
+    if (!pin || !myPos) { setRoute(null); return; }
     let cancelled = false;
     (async () => {
       setRouting(true);
-      const r = await getRoute(myPos, { latitude: place.lat, longitude: place.lng }, transport);
+      const r = await getRoute(myPos, pin, transport);
       if (!cancelled) {
         setRoute(r);
         setRouting(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [place, transport, myPos]);
+  }, [pin?.latitude, pin?.longitude, transport, myPos]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const submit = async () => {
     if (!place && !query.trim()) return setErr(tr('Destination is required'));
@@ -153,8 +159,8 @@ export function TripSetupScreen() {
       transport,
       // Live tracking is always as fast as possible — no user knob.
       locationInterval: 5,
-      destLat: place?.lat,
-      destLng: place?.lng,
+      destLat: pin?.latitude ?? place?.lat,
+      destLng: pin?.longitude ?? place?.lng,
       route: route ? route.coords.map((c) => [c.longitude, c.latitude] as [number, number]) : undefined,
       distanceM: route?.distanceM,
       durationS: route?.durationS,
@@ -245,6 +251,37 @@ export function TripSetupScreen() {
               ))
             )}
           </Card>
+        )}
+
+        {/* Exact destination. Address search resolves to the street at best
+            (OSM rarely has house numbers), so the user places the final pin.
+            Keyed on the picked place so choosing a new result re-centres the
+            map, while tapping to move the pin does not. */}
+        {pin && (
+          <>
+            <Eyebrow style={{ marginBottom: 6 }}>{tr('EXACT DESTINATION')}</Eyebrow>
+            <View
+              style={{
+                height: 220,
+                borderRadius: t.radii.md,
+                overflow: 'hidden',
+                marginBottom: 6,
+                borderWidth: 1,
+                borderColor: t.colors.hairline,
+              }}
+            >
+              <TripMap
+                key={`${place?.lat ?? 'x'},${place?.lng ?? 'y'}`}
+                destination={{ ...pin, label: place?.name }}
+                follow={false}
+                initialDelta={0.004}
+                onMapPress={setPin}
+              />
+            </View>
+            <Text variant="meta" color={t.colors.inkMute} style={{ marginBottom: 14 }}>
+              {tr('Tap the map to fine-tune the exact entrance — helpful when a street number isn’t on the map.')}
+            </Text>
+          </>
         )}
 
         <Eyebrow style={{ marginBottom: 6 }}>{tr('HOW ARE YOU TRAVELLING?')}</Eyebrow>
