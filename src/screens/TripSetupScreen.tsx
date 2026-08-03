@@ -10,6 +10,7 @@ import { useTheme } from '../theme/ThemeProvider';
 import { useCircle } from '../hooks/useCircle';
 import { useGroups } from '../hooks/useGroups';
 import { useTrips } from '../hooks/useTrips';
+import { useHomePlace } from '../hooks/useHomePlace';
 import { useAuth } from '../state/Auth';
 import { supabase } from '../lib/supabase';
 import { palette } from '../theme/tokens';
@@ -44,6 +45,7 @@ export function TripSetupScreen() {
   const { groups } = useGroups();
   const { user } = useAuth();
   const { activeTrip, loading, start } = useTrips();
+  const { home } = useHomePlace();
 
   // Place search
   const [query, setQuery] = useState('');
@@ -213,6 +215,37 @@ export function TripSetupScreen() {
             )}
           </View>
         </Card>
+
+        {/* Saved-home shortcut: skips the search for the most common destination.
+            It only fills in the destination — arrival is judged against that
+            destination like any other, never against where home happens to be. */}
+        {home && !place && (
+          <Pressable
+            onPress={() =>
+              // Stored as the trip's destination name, so a follower's push reads
+              // "To Home" rather than exposing the street address.
+              pickPlace({ name: tr('Home'), fullName: home.label, lat: home.lat, lng: home.lng })
+            }
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              alignSelf: 'flex-start',
+              paddingVertical: 8,
+              paddingHorizontal: 14,
+              borderRadius: 999,
+              backgroundColor: t.colors.parchment,
+              borderWidth: 1,
+              borderColor: t.colors.hairline,
+              marginBottom: 14,
+            }}
+          >
+            <Text style={{ fontSize: 14 }}>🏡</Text>
+            <Text variant="small" weight="semibold" color={t.colors.inkSoft}>
+              {tr('My Home')}
+            </Text>
+          </Pressable>
+        )}
 
         {/* No-results hint — still allows starting the trip with just a name */}
         {noResults && !searching && results.length === 0 && (

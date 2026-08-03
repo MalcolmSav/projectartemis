@@ -21,6 +21,10 @@ export interface PendingRequest extends CheckIn {
 
 export const WELLNESS_TIMEOUT_MS = 30 * 60 * 1000; // 30 min
 
+// Long enough to swallow a burst of related rows, short enough that an incoming
+// alarm or wellness check still lands instantly as far as anyone can tell.
+const REFRESH_DEBOUNCE_MS = 400;
+
 export interface FriendAlarm {
   profile: Profile | null;
   checkIn: CheckIn;
@@ -68,22 +72,43 @@ export function useCheckIns() {
   const refresh = useCallback(async () => {
     if (!user) return;
 
-    // Latest check-in per user (any kind, used for status dots)
-    const { data: all } = await supabase
-      .from('check_ins')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(300);
-    const map: Record<string, CheckIn> = {};
-    (all ?? []).forEach((c: CheckIn) => {
-      if (!map[c.user_id]) map[c.user_id] = c;
-    });
-    setLatestByUser(map);
+    // Latest check-in per user (any kind, used for status dots), and my most
+    // recent *actual* check-in (kind 'ok') for the "your last check-in" label —
+    // separate so that sending a wellness check doesn't masquerade as one.
+    //
+    // Both are answered server-side. This used to pull the 300 most recent rows
+    // and reduce them here, which cost more the chattier the circle got and
+    // quietly lost rows past the limit: a member who hadn't checked in for a
+    // while dropped off the list entirely and their status dot went blank.
+    const [{ data: latest, error: latestErr }, { data: myOk }] = await Promise.all([
+      supabase.rpc('latest_check_ins'),
+      supabase
+        .from('check_ins')
+        .select('created_at')
+        .eq('user_id', user.id)
+        .eq('kind', 'ok')
+        .order('created_at', { ascending: false })
+        .limit(1),
+    ]);
 
-    // My most recent *actual* check-in (kind 'ok') — used for the "your last
-    // check-in" label so that sending a wellness check doesn't masquerade as one.
-    const myOk = (all ?? []).find((c: CheckIn) => c.user_id === user.id && c.kind === 'ok');
-    setMyLastOkAt(myOk ? myOk.created_at : null);
+    const map: Record<string, CheckIn> = {};
+    if (latestErr) {
+      // The RPC ships in supabase/perf_tuning.sql. If a build reaches a database
+      // that hasn't run it yet, fall back to the old client-side reduction
+      // rather than blanking every status dot in the app.
+      const { data: all } = await supabase
+        .from('check_ins')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(300);
+      (all ?? []).forEach((c: CheckIn) => {
+        if (!map[c.user_id]) map[c.user_id] = c;
+      });
+    } else {
+      ((latest ?? []) as CheckIn[]).forEach((c) => (map[c.user_id] = c));
+    }
+    setLatestByUser(map);
+    setMyLastOkAt((myOk?.[0] as { created_at: string } | undefined)?.created_at ?? null);
 
     // Wellness checks directed at me (last 24 h). Powers BOTH the active
     // "respond now" hero (pendingForMe) and the persistent received-checks
@@ -215,9 +240,24 @@ export function useCheckIns() {
     if (!user) return;
     const topic = `checkins:${user.id}:${Math.random().toString(36).slice(2)}`;
     const ch = supabase.channel(topic);
+
+    // refresh() is several round-trips, and one circle-wide event (an alarm, a
+    // wellness check answered by a few people at once) arrives as a burst of
+    // rows. Coalesce them into a single trailing refresh so a busy moment costs
+    // one fetch, not one per row.
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleRefresh = () => {
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        refresh();
+      }, REFRESH_DEBOUNCE_MS);
+    };
+
     // '*' so seen-receipt UPDATEs (seen_at) arrive live, not just new inserts.
-    ch.on('postgres_changes', { event: '*', schema: 'public', table: 'check_ins' }, refresh).subscribe();
+    ch.on('postgres_changes', { event: '*', schema: 'public', table: 'check_ins' }, scheduleRefresh).subscribe();
     return () => {
+      if (timer) clearTimeout(timer);
       supabase.removeChannel(ch);
     };
   }, [user, refresh]);

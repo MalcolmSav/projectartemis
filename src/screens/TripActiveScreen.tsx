@@ -35,7 +35,7 @@ const ETA_GRACE_MS = 5 * 60 * 1000;
 // Warn the buddy while there's still enough charge to actually send the message.
 const LOW_BATTERY_THRESHOLD = 0.15;
 
-// How close (metres) to home OR the trip destination counts as "arrived".
+// How close (metres) to the trip's destination counts as "arrived".
 const ARRIVAL_RADIUS_M = 120;
 
 // Re-route (recompute remaining distance/time) at most this often.
@@ -60,7 +60,7 @@ export function TripActiveScreen() {
   const t = useTheme();
   const tr = useT();
   const nav = useNavigation<Nav>();
-  const { activeTrip, loading, finish } = useTrips();
+  const { activeTrip, loading, finish, escalate: escalateTrip } = useTrips();
   const { members } = useCircle();
   const { recordAlarm, recordOk } = useCheckIns();
   const { home } = useHomePlace();
@@ -78,6 +78,11 @@ export function TripActiveScreen() {
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const escalateRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const arrivedRef = useRef(false);
+  // Auto check-in stays disarmed until we've seen the traveller OUTSIDE the
+  // arrival radius at least once. Without it, any trip that starts inside that
+  // radius — the usual case, since you set off from home — completes on the
+  // very first location fix. It also absorbs GPS jitter at the start point.
+  const departedRef = useRef(false);
   const lastRerouteRef = useRef(0);
   // Set right before any finish() call that's followed by our own explicit
   // navigation (arrived/escalated/cancelled). Without this, the "activeTrip
@@ -91,6 +96,19 @@ export function TripActiveScreen() {
     activeTrip?.dest_lat != null && activeTrip?.dest_lng != null
       ? { latitude: activeTrip.dest_lat, longitude: activeTrip.dest_lng }
       : null;
+
+  // Where this trip actually ends — the destination, and nothing else. The saved
+  // home place is only a shortcut for PICKING a destination (see TripSetupScreen);
+  // it is never an arrival point in its own right. Treating it as one ended every
+  // trip the moment it started, since you normally set off from home.
+  // A trip with no geocoded destination has no auto check-in: the traveller taps
+  // "I've arrived".
+  const arrivalTarget = React.useMemo(() => {
+    if (!destCoord) return null;
+    // Home only affects the wording, for a trip whose destination IS home.
+    const isHome = !!home && distanceM(destCoord.latitude, destCoord.longitude, home.lat, home.lng) <= ARRIVAL_RADIUS_M;
+    return { lat: destCoord.latitude, lng: destCoord.longitude, isHome };
+  }, [destCoord?.latitude, destCoord?.longitude, home?.lat, home?.lng]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const mode: TravelMode = VALID_MODES.includes(activeTrip?.transport as TravelMode)
     ? (activeTrip?.transport as TravelMode)
@@ -202,23 +220,26 @@ export function TripActiveScreen() {
     };
   }, [activeTrip?.buddy_id, activeTrip?.destination, user]);
 
-  // Escalate to the BUDDY only — the person following the trip. Marking the
-  // trip 'escalated' fires the trips webhook, which pushes to the buddy and
+  // Escalate to the BUDDY only — the person following the trip. Setting
+  // escalated_at fires the trips webhook, which pushes to every follower and
   // turns their follow screen red. This does NOT raise a whole-circle alarm;
   // that's a separate, explicit choice (escalateWholeCircle below), matching
   // the ETA prompt's promise that only the buddy is alerted.
+  //
+  // The trip stays ACTIVE and we stay on this screen: escalation is the moment
+  // the follower most needs the live location, so ending the trip here (which is
+  // what it used to do) killed the tracking the alert points them at.
   const escalate = useCallback(async () => {
     if (escalateRef.current) {
       clearTimeout(escalateRef.current);
       escalateRef.current = null;
     }
-    leavingRef.current = true;
-    await finish('escalated');
-    nav.goBack();
-  }, [finish, nav]);
+    await escalateTrip();
+  }, [escalateTrip]);
 
   // Explicit "alert my entire circle" — raises a real alarm (all circle members
   // get the SOS + FriendAlarmScreen) on top of escalating the trip to the buddy.
+  // The trip keeps running underneath the alarm screen, still broadcasting.
   const escalateWholeCircle = useCallback(async () => {
     if (escalateRef.current) {
       clearTimeout(escalateRef.current);
@@ -227,27 +248,32 @@ export function TripActiveScreen() {
     const dest = activeTrip?.destination ?? 'their destination';
     leavingRef.current = true;
     await recordAlarm(`Need help during trip to ${dest}`);
-    await finish('escalated');
+    await escalateTrip();
     nav.replace('AlarmActive');
-  }, [activeTrip?.destination, recordAlarm, finish, nav]);
+  }, [activeTrip?.destination, recordAlarm, escalateTrip, nav]);
 
   // When the ETA passes, prompt the user once and start a grace timer.
+  // This timer is only a fast path for when the app happens to be open — the
+  // server-side watchdog (supabase/functions/watchdog) escalates the same trip
+  // independently, so a locked or killed phone still alerts the buddy.
   useEffect(() => {
     if (!etaTimestamp || etaHandled) return;
     if (now < etaTimestamp) return;
 
     setEtaHandled(true);
-    const buddyName =
-      members.find((m) => m.profile.id === activeTrip?.buddy_id)?.profile.name ?? 'your circle';
+    const buddyProfile = members.find((m) => m.profile.id === activeTrip?.buddy_id)?.profile;
+    // Matches the wording used elsewhere on this screen. The old fallback said
+    // "your circle", which promised the wrong thing — only the buddy is alerted.
+    const buddyName = buddyProfile ? personName(buddyProfile) : tr('your buddy');
 
     escalateRef.current = setTimeout(escalate, ETA_GRACE_MS);
 
     Alert.alert(
-      '🌙 You’ve reached your ETA',
-      `Are you safe? If you don’t respond, ${buddyName} will be alerted and your live location shared in 5 minutes.`,
+      tr('🌙 You’ve reached your ETA'),
+      tr('Are you safe? If you don’t respond, {name} will be alerted and your live location shared in 5 minutes.', { name: buddyName }),
       [
         {
-          text: 'I arrived safe',
+          text: tr('I arrived safe'),
           onPress: async () => {
             if (escalateRef.current) {
               clearTimeout(escalateRef.current);
@@ -259,14 +285,14 @@ export function TripActiveScreen() {
           },
         },
         {
-          text: '🚨 Need help',
+          text: tr('🚨 Need help'),
           style: 'destructive',
           onPress: escalate,
         },
       ],
       { cancelable: false },
     );
-  }, [now, etaTimestamp, etaHandled, members, activeTrip?.buddy_id, escalate, finish, nav]);
+  }, [now, etaTimestamp, etaHandled, members, activeTrip?.buddy_id, escalate, finish, nav, tr]);
 
   useEffect(() => {
     return () => {
@@ -274,13 +300,23 @@ export function TripActiveScreen() {
     };
   }, []);
 
-  /** Arrived at either home or the trip destination → auto check-in. */
+  // A new trip re-arms auto check-in from scratch.
+  useEffect(() => {
+    arrivedRef.current = false;
+    departedRef.current = false;
+  }, [activeTrip?.id]);
+
+  /** Reached the trip's destination → auto check-in. */
   const checkArrival = useCallback(
     async (lat: number, lng: number) => {
-      if (arrivedRef.current) return false;
-      const nearHome = home && distanceM(lat, lng, home.lat, home.lng) <= ARRIVAL_RADIUS_M;
-      const nearDest = destCoord && distanceM(lat, lng, destCoord.latitude, destCoord.longitude) <= ARRIVAL_RADIUS_M;
-      if (!nearHome && !nearDest) return false;
+      if (arrivedRef.current || !arrivalTarget) return false;
+      const atTarget = distanceM(lat, lng, arrivalTarget.lat, arrivalTarget.lng) <= ARRIVAL_RADIUS_M;
+      // Arm only once they've genuinely left the start point.
+      if (!departedRef.current) {
+        if (!atTarget) departedRef.current = true;
+        return false;
+      }
+      if (!atTarget) return false;
       arrivedRef.current = true;
       leavingRef.current = true;
       if (escalateRef.current) {
@@ -288,16 +324,20 @@ export function TripActiveScreen() {
         escalateRef.current = null;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      await recordOk(nearDest ? `Arrived at ${activeTrip?.destination} — auto check-in` : 'Arrived home safe — auto check-in');
+      await recordOk(
+        arrivalTarget.isHome
+          ? 'Arrived home safe — auto check-in'
+          : `Arrived at ${activeTrip?.destination} — auto check-in`,
+      );
       await finish('arrived');
       Alert.alert(
-        nearDest ? tr('You made it 🎉') : tr('Welcome home 🏡'),
+        arrivalTarget.isHome ? tr('Welcome home 🏡') : tr('You made it 🎉'),
         tr("You've arrived safely. Your trip ended and your buddy was notified."),
       );
       nav.goBack();
       return true;
     },
-    [home, destCoord, recordOk, finish, nav, activeTrip?.destination],
+    [arrivalTarget, recordOk, finish, nav, activeTrip?.destination],
   );
 
   // Trip location broadcast at chosen interval + live re-route.
@@ -381,7 +421,9 @@ export function TripActiveScreen() {
     buddyName:
       personName(members.find((m) => m.profile.id === activeTrip?.buddy_id)?.profile ?? null) || tr('your buddy'),
     isFollowing: !!activeTrip?.followed_at,
-    status: 'on_the_way',
+    // The trip keeps running once escalated, so the lock-screen card has to say
+    // which of the two it is.
+    status: activeTrip?.escalated_at ? 'escalated' : 'on_the_way',
   };
   const liveStateRef = useRef(liveActivityState);
   liveStateRef.current = liveActivityState;
@@ -407,6 +449,11 @@ export function TripActiveScreen() {
   useEffect(() => {
     if (activeTrip?.followed_at) updateTripActivity(activityIdRef.current, liveStateRef.current);
   }, [activeTrip?.followed_at]);
+
+  // Same for escalation — the card must turn red immediately, not up to 15 s later.
+  useEffect(() => {
+    if (activeTrip?.escalated_at) updateTripActivity(activityIdRef.current, liveStateRef.current);
+  }, [activeTrip?.escalated_at]);
 
   if (!activeTrip) return null;
   const buddy = members.find((m) => m.profile.id === activeTrip.buddy_id);
@@ -579,14 +626,25 @@ export function TripActiveScreen() {
           </PillButton>
         </Card>
 
-        <View style={{ backgroundColor: t.colors.gold100, padding: 14, borderRadius: t.radii.md, marginBottom: 22 }}>
-          <Text variant="small" color={t.colors.inkSoft}>
-            {tr("🌙 You'll get a check-in at {eta}. If you don't respond within 5 minutes, {name} sees your live location.", {
-              eta: activeTrip.eta ?? 'ETA',
-              name: buddy ? personName(buddy.profile) : tr('your buddy'),
-            })}
-          </Text>
-        </View>
+        {activeTrip.escalated_at ? (
+          // Escalated trips keep running — that's the point. Say so plainly, so
+          // the traveller knows tracking is still on and help is on its way.
+          <View style={{ backgroundColor: palette.crimson, padding: 14, borderRadius: t.radii.md, marginBottom: 22 }}>
+            <Eyebrow color="rgba(255,255,255,0.75)">{tr('HELP REQUESTED')}</Eyebrow>
+            <Text variant="small" color="#fff" style={{ marginTop: 4 }}>
+              {tr('Everyone following this trip has been alerted. Your live location keeps updating for them until you end the trip.')}
+            </Text>
+          </View>
+        ) : (
+          <View style={{ backgroundColor: t.colors.gold100, padding: 14, borderRadius: t.radii.md, marginBottom: 22 }}>
+            <Text variant="small" color={t.colors.inkSoft}>
+              {tr("🌙 You'll get a check-in at {eta}. If you don't respond within 5 minutes, {name} sees your live location.", {
+                eta: activeTrip.eta ?? 'ETA',
+                name: buddy ? personName(buddy.profile) : tr('your buddy'),
+              })}
+            </Text>
+          </View>
+        )}
 
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <PillButton

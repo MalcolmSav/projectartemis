@@ -141,9 +141,11 @@ export const sv: Record<string, string> = {
   NAME: 'NAMN',
   BIO: 'BIO',
   'Name is required': 'Namn krävs',
-  'HOME · AUTO CHECK-IN': 'HEM · AUTO-INCHECKNING',
-  'When a trip reaches your home, Artemis marks you arrived safe automatically — no tapping needed.':
-    'När en resa når ditt hem markerar Artemis automatiskt att du kommit fram säkert — utan att trycka.',
+  HOME: 'HEM',
+  Home: 'Hem',
+  'My Home': 'Mitt hem',
+  'Saved so you can pick "My Home" as a destination in one tap when starting a trip.':
+    'Sparas så att du kan välja ”Mitt hem” som destination med ett tryck när du startar en resa.',
   'Set home to my current location': 'Sätt hem till min nuvarande plats',
   'Getting location…': 'Hämtar plats…',
   'Could not set home': 'Kunde inte sätta hem',
@@ -596,6 +598,14 @@ export const sv: Record<string, string> = {
   'Welcome home 🏡': 'Välkommen hem 🏡',
   "You've arrived safely. Your trip ended and your buddy was notified.":
     'Du har kommit fram säkert. Din resa avslutades och din kompis meddelades.',
+  '🌙 You’ve reached your ETA': '🌙 Du har nått din ankomsttid',
+  'Are you safe? If you don’t respond, {name} will be alerted and your live location shared in 5 minutes.':
+    'Är du trygg? Om du inte svarar larmas {name} och din live-plats delas om 5 minuter.',
+  'I arrived safe': 'Jag kom fram säkert',
+  '🚨 Need help': '🚨 Behöver hjälp',
+  'HELP REQUESTED': 'HJÄLP BEGÄRD',
+  'Everyone following this trip has been alerted. Your live location keeps updating for them until you end the trip.':
+    'Alla som följer resan har larmats. Din live-plats fortsätter uppdateras för dem tills du avslutar resan.',
   'Following {name}': 'Följer {name}',
   'Arrived safely': 'Framme säkert',
   'Needs help — escalated': 'Behöver hjälp — eskalerad',

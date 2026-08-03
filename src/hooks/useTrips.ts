@@ -12,7 +12,18 @@ export interface Trip {
   location_interval: number; // seconds between location updates
   started_at: string;
   ended_at: string | null;
+  /** Terminal states only. Escalation is `escalated_at`, not a status — see below. */
   status: 'active' | 'arrived' | 'cancelled' | 'escalated';
+  /** The ETA as a real instant, so the server-side watchdog can enforce it. */
+  eta_at: string | null;
+  /**
+   * Set when the trip is escalated — by the traveller tapping "Need help", or by
+   * the watchdog when the ETA passes unanswered. The trip deliberately stays
+   * `active`: an escalated traveller is exactly who you most need to keep
+   * tracking, and ending the trip would stop the background location broadcast
+   * that the follower's alert tells them to go and look at.
+   */
+  escalated_at: string | null;
   // Routing (nullable for legacy trips without a geocoded destination)
   dest_lat: number | null;
   dest_lng: number | null;
@@ -22,6 +33,20 @@ export interface Trip {
   remaining_m: number | null; // live, updated by the traveler
   remaining_s: number | null; // live, updated by the traveler
   followed_at: string | null; // set when the buddy opens the follow screen
+}
+
+/**
+ * Turn an "HH:MM" ETA into a real instant, relative to `from`. A time that has
+ * already passed today means tomorrow — someone leaving at 23:50 with an ETA of
+ * 00:20 is not half a day late.
+ */
+export function etaToTimestamp(eta: string, from: Date = new Date()): Date | null {
+  const [h, m] = eta.split(':').map((n) => parseInt(n, 10));
+  if (isNaN(h) || isNaN(m)) return null;
+  const at = new Date(from);
+  at.setHours(h, m, 0, 0);
+  if (at.getTime() <= from.getTime()) at.setDate(at.getDate() + 1);
+  return at;
 }
 
 export function useTrips() {
@@ -80,6 +105,9 @@ export function useTrips() {
           user_id: user.id,
           destination: t.destination,
           eta: t.eta ?? null,
+          // Resolved here so the watchdog can compare a timestamp instead of
+          // re-deriving one from an "HH:MM" string and started_at.
+          eta_at: t.eta ? etaToTimestamp(t.eta)?.toISOString() ?? null : null,
           buddy_id: primary,
           transport: t.transport ?? null,
           location_interval: t.locationInterval ?? 60,
@@ -109,6 +137,24 @@ export function useTrips() {
     [user],
   );
 
+  /**
+   * Raise the alarm on a trip WITHOUT ending it. The trip stays `active`, so
+   * useTripBroadcast keeps the background location task running and the
+   * follower's map keeps moving — which is the whole point of escalating.
+   * Ending the trip is still the traveller's call ("I've arrived" / cancel).
+   */
+  const escalate = useCallback(async () => {
+    if (!activeTrip || activeTrip.escalated_at) return {};
+    const now = new Date().toISOString();
+    const { error } = await supabase
+      .from('trips')
+      .update({ escalated_at: now })
+      .eq('id', activeTrip.id);
+    if (error) return { error: error.message };
+    setActiveTrip({ ...activeTrip, escalated_at: now });
+    return {};
+  }, [activeTrip]);
+
   const finish = useCallback(
     async (status: 'arrived' | 'cancelled' | 'escalated') => {
       if (!activeTrip) return {};
@@ -123,5 +169,5 @@ export function useTrips() {
     [activeTrip],
   );
 
-  return { activeTrip, loading, refresh, start, finish };
+  return { activeTrip, loading, refresh, start, finish, escalate };
 }

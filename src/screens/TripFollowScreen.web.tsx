@@ -101,7 +101,9 @@ export function TripFollowScreen() {
   const status: { label: string; color: string } =
     trip?.status === 'arrived'
       ? { label: tr('Arrived safely'), color: palette.statusOk }
-      : trip?.status === 'escalated'
+      // escalated_at, not status: an escalated trip stays active so its live
+      // location keeps flowing — which is exactly what this screen shows.
+      : trip?.escalated_at || trip?.status === 'escalated'
         ? { label: tr('Needs help — escalated'), color: palette.crimson }
         : etaTs && now > etaTs
           ? { label: tr('Past ETA'), color: palette.statusWarn }

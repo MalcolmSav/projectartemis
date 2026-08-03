@@ -50,6 +50,10 @@ CREATE POLICY group_members_owner_all ON circle_group_members
   );
 
 -- ── 3. Multiple trip followers ──────────────────────────────────────────────
+-- NOTE: trips and trip_buddies must NOT read each other from their policies —
+-- that mutual reference is an RLS cycle ("infinite recursion detected in policy
+-- for relation trips") and breaks any trip with 2+ followers. The cross-table
+-- lookups go through the SECURITY DEFINER helpers below, which read past RLS.
 CREATE TABLE IF NOT EXISTS trip_buddies (
   trip_id     UUID NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
   buddy_id    UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
@@ -61,14 +65,28 @@ ALTER TABLE trip_buddies ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMPTZ;
 
 ALTER TABLE trip_buddies ENABLE ROW LEVEL SECURITY;
 
+-- Do I own trip `t`? / Am I a follower of trip `t`? SECURITY DEFINER so the
+-- policies below can answer without re-entering the other table's RLS.
+-- Neither leaks anything: both answer only about auth.uid().
+CREATE OR REPLACE FUNCTION public.owns_trip(t UUID)
+RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT EXISTS (SELECT 1 FROM public.trips WHERE id = t AND user_id = auth.uid());
+$$;
+REVOKE ALL ON FUNCTION public.owns_trip(UUID) FROM public;
+GRANT EXECUTE ON FUNCTION public.owns_trip(UUID) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.follows_trip(t UUID)
+RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT EXISTS (SELECT 1 FROM public.trip_buddies WHERE trip_id = t AND buddy_id = auth.uid());
+$$;
+REVOKE ALL ON FUNCTION public.follows_trip(UUID) FROM public;
+GRANT EXECUTE ON FUNCTION public.follows_trip(UUID) TO authenticated;
+
 -- The traveler manages who follows.
 DROP POLICY IF EXISTS trip_buddies_owner_all ON trip_buddies;
 CREATE POLICY trip_buddies_owner_all ON trip_buddies
-  FOR ALL USING (
-    EXISTS (SELECT 1 FROM trips t WHERE t.id = trip_id AND t.user_id = auth.uid())
-  ) WITH CHECK (
-    EXISTS (SELECT 1 FROM trips t WHERE t.id = trip_id AND t.user_id = auth.uid())
-  );
+  FOR ALL USING (public.owns_trip(trip_id))
+  WITH CHECK (public.owns_trip(trip_id));
 
 -- A follower can see their own row, and confirm it (accepted_at).
 DROP POLICY IF EXISTS trip_buddies_self_select ON trip_buddies;
@@ -85,7 +103,7 @@ CREATE POLICY trips_follower_select ON trips
   FOR SELECT USING (
     auth.uid() = user_id
     OR auth.uid() = buddy_id
-    OR EXISTS (SELECT 1 FROM trip_buddies tb WHERE tb.trip_id = trips.id AND tb.buddy_id = auth.uid())
+    OR public.follows_trip(id)
   );
 
 -- ── 4. Trip chat ────────────────────────────────────────────────────────────
@@ -111,7 +129,7 @@ CREATE POLICY trip_messages_participants_select ON trip_messages
         AND (
           t.user_id = auth.uid()
           OR t.buddy_id = auth.uid()
-          OR EXISTS (SELECT 1 FROM trip_buddies tb WHERE tb.trip_id = t.id AND tb.buddy_id = auth.uid())
+          OR public.follows_trip(t.id)
         )
     )
   );
@@ -127,7 +145,7 @@ CREATE POLICY trip_messages_participants_insert ON trip_messages
         AND (
           t.user_id = auth.uid()
           OR t.buddy_id = auth.uid()
-          OR EXISTS (SELECT 1 FROM trip_buddies tb WHERE tb.trip_id = t.id AND tb.buddy_id = auth.uid())
+          OR public.follows_trip(t.id)
         )
     )
   );

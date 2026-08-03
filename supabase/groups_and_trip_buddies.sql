@@ -44,14 +44,30 @@ CREATE TABLE IF NOT EXISTS trip_buddies (
 
 ALTER TABLE trip_buddies ENABLE ROW LEVEL SECURITY;
 
+-- trips and trip_buddies must NOT read each other from their policies — that
+-- mutual reference is an RLS cycle ("infinite recursion detected in policy for
+-- relation trips") and breaks any trip with 2+ followers. These SECURITY
+-- DEFINER helpers read past RLS, ending the chain. Neither leaks anything:
+-- both answer only about auth.uid().
+CREATE OR REPLACE FUNCTION public.owns_trip(t UUID)
+RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT EXISTS (SELECT 1 FROM public.trips WHERE id = t AND user_id = auth.uid());
+$$;
+REVOKE ALL ON FUNCTION public.owns_trip(UUID) FROM public;
+GRANT EXECUTE ON FUNCTION public.owns_trip(UUID) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.follows_trip(t UUID)
+RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT EXISTS (SELECT 1 FROM public.trip_buddies WHERE trip_id = t AND buddy_id = auth.uid());
+$$;
+REVOKE ALL ON FUNCTION public.follows_trip(UUID) FROM public;
+GRANT EXECUTE ON FUNCTION public.follows_trip(UUID) TO authenticated;
+
 -- The traveler (trip owner) manages who follows.
 DROP POLICY IF EXISTS trip_buddies_owner_all ON trip_buddies;
 CREATE POLICY trip_buddies_owner_all ON trip_buddies
-  FOR ALL USING (
-    EXISTS (SELECT 1 FROM trips t WHERE t.id = trip_id AND t.user_id = auth.uid())
-  ) WITH CHECK (
-    EXISTS (SELECT 1 FROM trips t WHERE t.id = trip_id AND t.user_id = auth.uid())
-  );
+  FOR ALL USING (public.owns_trip(trip_id))
+  WITH CHECK (public.owns_trip(trip_id));
 
 -- A follower can see the rows that name them (so useFollowedTrips can find their trips).
 DROP POLICY IF EXISTS trip_buddies_self_select ON trip_buddies;
@@ -65,5 +81,5 @@ CREATE POLICY trips_follower_select ON trips
   FOR SELECT USING (
     auth.uid() = user_id
     OR auth.uid() = buddy_id
-    OR EXISTS (SELECT 1 FROM trip_buddies tb WHERE tb.trip_id = trips.id AND tb.buddy_id = auth.uid())
+    OR public.follows_trip(id)
   );

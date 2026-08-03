@@ -92,7 +92,7 @@ export function HomeScreen() {
   const { latestByUser, myLastOkAt, pendingForMe, sentChecks, friendNeedHelp, clearFriendNeedHelp, recordOk, recordAlarm, sendWellnessRequest, respondWellness, refresh: refreshChecks } = useCheckIns();
   const { unreadTotal } = useConversations();
   const { byUser: presenceByUser } = usePresence();
-  const { expiresAt: timerExpiresAt, expired: timerExpired, start: startTimer, clear: clearTimer } = useSafetyTimer();
+  const { expiresAt: timerExpiresAt, expired: timerExpired, start: startTimer, clear: clearTimer, claimExpiry: claimTimerExpiry } = useSafetyTimer();
   const { trips: followedTrips } = useFollowedTrips();
   const { activeTrip } = useTrips();
   const streak = useStreak();
@@ -122,11 +122,16 @@ export function HomeScreen() {
 
   // Dead-man's-switch: when the safety timer expires without a "I'm safe"
   // confirmation, automatically raise the alarm.
+  //
+  // This is the fast path for a phone that's awake. The server-side watchdog
+  // enforces the same deadline for a phone that isn't, so we claim the timer
+  // first and only alarm if we won — otherwise the circle gets alerted twice.
   useEffect(() => {
     if (!timerExpired || timerFiredRef.current) return;
     timerFiredRef.current = true;
     (async () => {
-      await recordAlarm('Safety timer expired — auto-alarm');
+      const mine = await claimTimerExpiry();
+      if (mine) await recordAlarm('Safety timer expired — auto-alarm');
       await clearTimer();
       nav.navigate('AlarmActive');
     })();

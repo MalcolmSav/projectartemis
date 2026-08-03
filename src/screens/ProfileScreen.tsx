@@ -13,6 +13,15 @@ import { supabase } from '../lib/supabase';
 import { pickAndUploadAvatar } from '../lib/avatar';
 import { palette } from '../theme/tokens';
 
+/** The device's IANA timezone (e.g. "Europe/Stockholm"), or null if unavailable. */
+function deviceTimeZone(): string | null {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+  } catch {
+    return null;
+  }
+}
+
 export function ProfileScreen() {
   const t = useTheme();
   const tr = useT();
@@ -37,7 +46,8 @@ export function ProfileScreen() {
 
   type NotifPrefs = {
     wellness: boolean; circle: boolean; alarm: boolean; trips: boolean; messages: boolean;
-    quiet_from?: string; quiet_to?: string; // "HH:MM" 24h
+    quiet_from?: string; quiet_to?: string; // "HH:MM" 24h, LOCAL wall-clock time
+    tz?: string; // IANA name — without it the server can't tell when "22:00" is
   };
   const DEFAULT_PREFS: NotifPrefs = { wellness: true, circle: true, alarm: true, trips: true, messages: true };
   const [notifPrefs, setNotifPrefs] = useState<NotifPrefs>(DEFAULT_PREFS);
@@ -50,13 +60,27 @@ export function ProfileScreen() {
       .eq('id', profile.id)
       .single()
       .then(({ data }) => {
-        if (data?.notification_prefs) setNotifPrefs({ ...DEFAULT_PREFS, ...(data.notification_prefs as Partial<NotifPrefs>) });
+        if (!data?.notification_prefs) return;
+        const saved = { ...DEFAULT_PREFS, ...(data.notification_prefs as Partial<NotifPrefs>) };
+        setNotifPrefs(saved);
+        // Backfill for profiles saved before tz was stored — otherwise their
+        // quiet hours stay stuck on UTC until they happen to change a setting.
+        const tz = deviceTimeZone();
+        if (tz && saved.tz !== tz) {
+          const next = { ...saved, tz };
+          setNotifPrefs(next);
+          supabase.from('profiles').update({ notification_prefs: next }).eq('id', profile.id).then(() => {});
+        }
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.id]);
 
   const updatePref = async (patch: Partial<NotifPrefs>) => {
-    const next = { ...notifPrefs, ...patch };
+    // Always stamp the current timezone: quiet hours are stored as local
+    // wall-clock strings, so the push server needs to know which clock. Refreshed
+    // on every write so it follows the user when they travel.
+    const tz = deviceTimeZone();
+    const next = { ...notifPrefs, ...patch, ...(tz ? { tz } : {}) };
     setNotifPrefs(next);
     if (!profile?.id) return;
     await supabase.from('profiles').update({ notification_prefs: next }).eq('id', profile.id);
@@ -148,10 +172,10 @@ export function ProfileScreen() {
           ) : null}
         </Card>
 
-        <Eyebrow style={{ marginBottom: 8 }}>{tr('HOME · AUTO CHECK-IN')}</Eyebrow>
+        <Eyebrow style={{ marginBottom: 8 }}>{tr('HOME')}</Eyebrow>
         <Card style={{ marginBottom: 18 }}>
           <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 10 }}>
-            {tr('When a trip reaches your home, Artemis marks you arrived safe automatically — no tapping needed.')}
+            {tr('Saved so you can pick "My Home" as a destination in one tap when starting a trip.')}
           </Text>
           {home ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>

@@ -4,12 +4,20 @@
 // Deploy: npx supabase functions deploy notify --project-ref pbqcsgthnwaqpddsucrx
 //
 // Webhooks to configure (all pointing to this function, INSERT unless noted):
-//   check_ins  — INSERT  (wellness checks, alarms, responses)
-//   invites    — INSERT  (new circle invite)
-//   invites    — UPDATE  (invite accepted)
-//   trips      — INSERT  (trip started → notify buddy)
-//   trips      — UPDATE  (trip arrived / cancelled / escalated)
-//   messages   — INSERT  (chat messages)
+//   check_ins    — INSERT  (wellness checks, alarms, responses)
+//   invites      — INSERT  (new circle invite)
+//   invites      — UPDATE  (invite accepted)
+//   trips        — INSERT  (trip started → notify the PRIMARY buddy only)
+//   trip_buddies — INSERT  (every EXTRA follower's "trip started" push — without
+//                           this, only the first person on a multi-follower trip
+//                           is ever notified that it began)
+//   messages     — INSERT  (chat messages)
+//
+// trips — UPDATE (arrived / cancelled / escalated / follow receipt) is NOT a
+// dashboard webhook: it's the hand-written `trips_notify_webhook` trigger in
+// supabase/perf_tuning.sql, which carries a WHEN clause so it skips the
+// route-progress updates an active trip writes every ~20 s. Re-adding it here
+// would double every trip notification.
 
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -53,20 +61,47 @@ async function getProfile(
   return (data as any) ?? { push_token: null, notification_prefs: null }
 }
 
+// Minutes since local midnight in `tz` (an IANA name like "Europe/Stockholm").
+// Deno ships full ICU, so this handles DST correctly without a lookup table.
+// Falls back to UTC for profiles saved before the app started sending a tz.
+function nowMinutesIn(tz: string | null): number {
+  const now = new Date()
+  if (!tz) return now.getUTCHours() * 60 + now.getUTCMinutes()
+  try {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: tz,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(now)
+    const h = Number(parts.find((p) => p.type === 'hour')?.value ?? '0')
+    const m = Number(parts.find((p) => p.type === 'minute')?.value ?? '0')
+    // "24" is a legal hour12:false rendering of midnight in some runtimes.
+    return (h % 24) * 60 + m
+  } catch {
+    // Unrecognised timezone — fall back to the old UTC behaviour rather than
+    // throwing inside a push handler.
+    return now.getUTCHours() * 60 + now.getUTCMinutes()
+  }
+}
+
 // Returns token only if the user has that pref enabled (defaults to true when null/missing)
 // and we're not inside their quiet-hours window.
 function tokenIfEnabled(profile: Profile, prefKey: string): string | null {
   const prefs = profile.notification_prefs
   if (prefs && prefs[prefKey] === false) return null
-  // Quiet hours: prefs.quiet_from / prefs.quiet_to are "HH:MM" strings (24h).
+  // Quiet hours: prefs.quiet_from / quiet_to are "HH:MM" strings (24h) that the
+  // user picked as LOCAL wall-clock time, so they must be compared in the user's
+  // own timezone (prefs.tz, an IANA name saved by the app). Comparing against
+  // UTC — as this did — put quiet hours 1–2 h off in Sweden and shifted them
+  // twice a year at the DST boundaries.
   // Alarms are never silenced by quiet hours.
   if (prefKey !== 'alarm' && prefs?.quiet_from && prefs?.quiet_to) {
-    const now = new Date()
     const toMins = (t: string) => {
       const [h, m] = t.split(':').map(Number)
       return h * 60 + m
     }
-    const cur = now.getUTCHours() * 60 + now.getUTCMinutes()
+    const cur = nowMinutesIn((prefs.tz as unknown as string) ?? null)
     const from = toMins(prefs.quiet_from as unknown as string)
     const to = toMins(prefs.quiet_to as unknown as string)
     const inWindow = from <= to ? cur >= from && cur < to : cur >= from || cur < to
@@ -389,7 +424,11 @@ async function handleTripUpdate(
 
   const newStatus = row.status as string
   const oldStatus = oldRow?.status as string | undefined
-  if (newStatus === oldStatus) return // no status change
+  // Escalation is a flag on a still-active trip, not a status change, so it has
+  // to be detected separately. (Trips also UPDATE every ~20 s with live route
+  // progress; everything below must stay behind one of these two edges.)
+  const justEscalated = !!row.escalated_at && !oldRow?.escalated_at
+  if (newStatus === oldStatus && !justEscalated) return
 
   const userId = row.user_id as string
   const destination = row.destination as string
@@ -414,11 +453,12 @@ async function handleTripUpdate(
       ...(priority ? { priority } : {}),
     }))
 
-  if (newStatus === 'arrived') {
-    await sendExpo(make(`✓ ${tripperName} arrived safely`, `Trip to ${destination} completed`, 'trip_arrived'))
-  } else if (newStatus === 'escalated') {
-    // Covers both auto-escalation (missed ETA) and a manual "Need help" tap.
+  if (justEscalated || newStatus === 'escalated') {
+    // Covers a manual "Need help" tap and the watchdog's missed-ETA escalation.
+    // Escalation wins over a same-payload status change: it's the urgent part.
     await sendExpo(make(`⚠️ ${tripperName} needs help`, `Their trip to ${destination} was escalated — open to see their live location`, 'trip_escalated', 'high'))
+  } else if (newStatus === 'arrived') {
+    await sendExpo(make(`✓ ${tripperName} arrived safely`, `Trip to ${destination} completed`, 'trip_arrived'))
   } else if (newStatus === 'cancelled') {
     await sendExpo(make(`${tripperName} cancelled their trip`, `Trip to ${destination} was cancelled`, 'trip_cancelled'))
   }
