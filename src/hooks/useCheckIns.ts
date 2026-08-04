@@ -21,6 +21,17 @@ export interface PendingRequest extends CheckIn {
 
 export const WELLNESS_TIMEOUT_MS = 30 * 60 * 1000; // 30 min
 
+/**
+ * True when PostgREST rejected a write/read because a column doesn't exist —
+ * i.e. the app is newer than the database. Lets safety-critical paths fall back
+ * to the pre-migration shape instead of failing outright.
+ */
+export function isUnknownColumn(err: { code?: string; message?: string } | null): boolean {
+  if (!err) return false;
+  // 42703 = undefined_column (Postgres), PGRST204 = unknown column (PostgREST).
+  return err.code === '42703' || err.code === 'PGRST204' || /column .* does not exist/i.test(err.message ?? '');
+}
+
 // Long enough to swallow a burst of related rows, short enough that an incoming
 // alarm or wellness check still lands instantly as far as anyone can tell.
 const REFRESH_DEBOUNCE_MS = 400;
@@ -275,12 +286,25 @@ export function useCheckIns() {
     [user],
   );
 
+  /**
+   * Raise an alarm. `alertIds` narrows who gets pushed (the notify function
+   * falls back to the whole circle when it's null/empty) — a "check on me"
+   * timer lets the user pick, and alerting people they deliberately left out
+   * would break that promise.
+   */
   const recordAlarm = useCallback(
-    async (note?: string) => {
+    async (note?: string, alertIds?: string[]) => {
       if (!user) return { error: 'Not signed in' };
-      const { error } = await supabase
-        .from('check_ins')
-        .insert({ user_id: user.id, kind: 'alarm' as CheckInKind, note: note ?? null });
+      const base = { user_id: user.id, kind: 'alarm' as CheckInKind, note: note ?? null };
+      const targeted = alertIds && alertIds.length > 0 ? alertIds : null;
+      const { error } = await supabase.from('check_ins').insert({ ...base, alert_ids: targeted });
+      // An alarm is the one write that must never be lost to a schema gap. If
+      // the alert_ids column isn't there yet, send it circle-wide rather than
+      // not at all — too many people hearing beats nobody hearing.
+      if (error && isUnknownColumn(error)) {
+        const { error: retryErr } = await supabase.from('check_ins').insert(base);
+        return retryErr ? { error: retryErr.message } : {};
+      }
       return error ? { error: error.message } : {};
     },
     [user],

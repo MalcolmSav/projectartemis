@@ -42,7 +42,7 @@ export const FEATURES = {
     key: 'safetytimer',
     emoji: '⏱️',
     title: 'Check on me',
-    body: 'Set a timer before a walk, a date, or a late shift. If you don’t confirm you’re safe in time, your circle is alerted and your live location is shared.',
+    body: 'Set a timer before a walk, a date, or a late shift, and choose who should hear about it. You get a heads-up before the deadline and a few extra minutes after it — then, if you still haven’t confirmed you’re safe, they’re alerted and your live location is shared.',
   },
   map: {
     key: 'map',

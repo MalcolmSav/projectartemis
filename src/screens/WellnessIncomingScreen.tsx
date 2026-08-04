@@ -15,13 +15,21 @@ import { Text, Eyebrow, PillButton } from '../components';
 import { IconChevron } from '../components/icons';
 import { palette } from '../theme/tokens';
 import { useCheckIns } from '../hooks/useCheckIns';
+import {
+  WELLNESS_ANSWER_MS,
+  WELLNESS_ANSWER_WARN_MS,
+  WELLNESS_ANSWER_GRACE_MS,
+  WELLNESS_ANSWER_EXTEND_MS,
+} from '../lib/constants';
 import { supabase } from '../lib/supabase';
 import { useT } from '../i18n';
 import { RootStackParamList } from '../navigation/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-const COUNTDOWN_MS = 30_000;
+/** answer → plenty of time left; ending → the last few seconds; grace → the
+ *  window is up but the screen is still here, waiting one last moment. */
+type Phase = 'answer' | 'ending' | 'grace';
 
 export function WellnessIncomingScreen() {
   const t = useTheme();
@@ -33,19 +41,65 @@ export function WellnessIncomingScreen() {
   const checkInId = route.params?.checkInId;
   const { respondWellness } = useCheckIns();
   const [busy, setBusy] = useState(false);
+  const [deadline, setDeadline] = useState(() => Date.now() + WELLNESS_ANSWER_MS);
+  const [phase, setPhase] = useState<Phase>('answer');
+  const [secondsLeft, setSecondsLeft] = useState(Math.ceil(WELLNESS_ANSWER_MS / 1000));
+  const warnedRef = React.useRef(false);
 
   const v = useSharedValue(1);
 
   useEffect(() => {
     // Mark as seen immediately so the sender knows it was received.
     if (checkInId) supabase.rpc('mark_wellness_seen', { check_in_id: checkInId }).then(() => {});
-    v.value = withTiming(0, { duration: COUNTDOWN_MS, easing: Easing.linear });
-    // On timeout: go back without inserting a fake response — sender will see "no response yet"
-    const id = setTimeout(() => nav.goBack(), COUNTDOWN_MS);
-    return () => clearTimeout(id);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Drain the bar over whatever time is actually left — restarted whenever the
+  // deadline moves, so "give me a minute" refills it instead of desyncing.
+  useEffect(() => {
+    const remaining = deadline - Date.now();
+    v.value = 1;
+    if (remaining > 0) v.value = withTiming(0, { duration: remaining, easing: Easing.linear });
+  }, [deadline, v]);
+
+  useEffect(() => {
+    const tick = () => {
+      const remaining = deadline - Date.now();
+      setSecondsLeft(Math.max(0, Math.ceil(remaining / 1000)));
+      if (remaining <= -WELLNESS_ANSWER_GRACE_MS) {
+        // Step aside without inserting a fake response — the sender sees "no
+        // response yet", and the check stays answerable from the app.
+        nav.goBack();
+        return;
+      }
+      if (remaining <= 0) {
+        setPhase('grace');
+        return;
+      }
+      if (remaining <= WELLNESS_ANSWER_WARN_MS) {
+        setPhase('ending');
+        // One nudge, on the way into the warning — a pocket-phone should buzz
+        // before the takeover disappears, not after.
+        if (!warnedRef.current) {
+          warnedRef.current = true;
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        }
+        return;
+      }
+      setPhase('answer');
+    };
+    tick();
+    const id = setInterval(tick, 250);
+    return () => clearInterval(id);
+  }, [deadline, nav]);
+
+  const grantMoreTime = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    warnedRef.current = false;
+    setDeadline(Date.now() + WELLNESS_ANSWER_EXTEND_MS);
+  };
+
   const barStyle = useAnimatedStyle(() => ({ width: `${v.value * 100}%` }));
+  const barColor = phase === 'answer' ? palette.gold500 : palette.crimson;
 
   const respond = async (kind: 'ok' | 'wellness_response' | 'alarm', note: string) => {
     if (busy) return;
@@ -116,8 +170,16 @@ export function WellnessIncomingScreen() {
           </Text>{' '}
           {tr('is checking in on you.')}
         </Text>
-        <Text variant="small" color={t.colors.inkSoft} style={{ textAlign: 'center', marginBottom: 24 }}>
-          {tr('Tap a response before the timer runs out.')}
+        <Text
+          variant="small"
+          color={phase === 'answer' ? t.colors.inkSoft : palette.crimson}
+          style={{ textAlign: 'center', marginBottom: 24 }}
+        >
+          {phase === 'grace'
+            ? tr('Still there? This closes in a moment — you can answer from the app either way.')
+            : phase === 'ending'
+              ? tr('Closing in {s}s — tap a response, or ask for more time.', { s: secondsLeft })
+              : tr('Tap a response before the timer runs out.')}
         </Text>
 
         <View
@@ -129,8 +191,29 @@ export function WellnessIncomingScreen() {
             overflow: 'hidden',
           }}
         >
-          <Animated.View style={[{ height: 6, backgroundColor: palette.gold500 }, barStyle]} />
+          <Animated.View style={[{ height: 6, backgroundColor: barColor }, barStyle]} />
         </View>
+
+        {/* Buying time is not answering — it only keeps the screen up, so it
+            never masquerades as a response to the person who's worried. */}
+        {phase !== 'answer' && (
+          <Pressable
+            onPress={grantMoreTime}
+            accessibilityRole="button"
+            style={{
+              marginTop: 18,
+              paddingVertical: 10,
+              paddingHorizontal: 20,
+              borderRadius: 999,
+              borderWidth: 1,
+              borderColor: t.colors.hairline,
+            }}
+          >
+            <Text variant="small" weight="semibold" color={t.colors.inkSoft}>
+              {tr('Give me another {s} seconds', { s: Math.round(WELLNESS_ANSWER_EXTEND_MS / 1000) })}
+            </Text>
+          </Pressable>
+        )}
       </View>
 
       {/* Bottom: response buttons */}

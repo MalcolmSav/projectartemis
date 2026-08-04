@@ -8,8 +8,10 @@ import { useEvents } from '../hooks/useEvents';
 import { useEmergencyContacts } from '../hooks/useEmergencyContacts';
 import { useHomePlace } from '../hooks/useHomePlace';
 import { useCircle } from '../hooks/useCircle';
+import { useGuardianship } from '../hooks/useGuardianship';
 import { useT, useLang } from '../i18n';
-import { supabase } from '../lib/supabase';
+import { supabase, Profile } from '../lib/supabase';
+import { personName } from '../lib/person';
 import { pickAndUploadAvatar } from '../lib/avatar';
 import { palette } from '../theme/tokens';
 
@@ -255,6 +257,8 @@ export function ProfileScreen() {
           </>
         )}
 
+        <FamilySection />
+
         <Eyebrow style={{ marginBottom: 8 }}>{tr('NOTIFICATIONS')}</Eyebrow>
         <Card style={{ marginBottom: 18 }}>
           {(
@@ -440,6 +444,351 @@ export function ProfileScreen() {
         }}
       />
     </View>
+  );
+}
+
+/**
+ * Family — linking a child account to a guardian, and the guardian's view of the
+ * accounts they manage.
+ *
+ * A managed account's circle is locked to its guardians, which is a real loss of
+ * control, so every screen here says plainly who holds it and what accepting
+ * costs. The lock itself lives in the database; this is only the way in and out.
+ */
+function FamilySection() {
+  const t = useTheme();
+  const tr = useT();
+  const {
+    guardians,
+    children,
+    incoming,
+    outgoing,
+    isChild,
+    requestGuardianship,
+    respondGuardianship,
+    endGuardianship,
+  } = useGuardianship();
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const respond = async (requestId: string, accept: boolean) => {
+    setBusyId(requestId);
+    const res = await respondGuardianship(requestId, accept);
+    setBusyId(null);
+    if (res.error) Alert.alert(tr("That didn't work"), res.error);
+  };
+
+  const confirmEnd = (childId: string, name: string) => {
+    Alert.alert(
+      tr('Stop managing {name}?', { name }),
+      tr('Their circle unlocks and you are removed from it. You can link again later.'),
+      [
+        { text: tr('Cancel'), style: 'cancel' },
+        {
+          text: tr('Stop managing'),
+          style: 'destructive',
+          onPress: async () => {
+            const res = await endGuardianship(childId);
+            if (res.error) Alert.alert(tr("That didn't work"), res.error);
+          },
+        },
+      ],
+    );
+  };
+
+  // Nothing to show, nothing to offer? Only true for a brand-new account that
+  // has no link and no request — keep the entry point visible in that case too.
+  return (
+    <>
+      <Eyebrow style={{ marginBottom: 8 }}>{tr('FAMILY')}</Eyebrow>
+      <Card style={{ marginBottom: 18 }}>
+        {isChild ? (
+          <>
+            <Text variant="body" weight="semibold">
+              {tr('This account is managed')}
+            </Text>
+            <Text variant="small" color={t.colors.inkSoft} style={{ marginTop: 4 }}>
+              {tr('Your circle is locked to your guardian(s). Everything else — check-ins, alarms, trips, calling for help — works exactly as normal.')}
+            </Text>
+            <View style={{ gap: 10, marginTop: 12 }}>
+              {guardians.map((g) => (
+                <View key={g.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <Avatar name={personName(g)} size={38} photoUri={g.avatar_url ?? undefined} />
+                  <View style={{ flex: 1 }}>
+                    <Text variant="body" weight="semibold">{personName(g)}</Text>
+                    <Text variant="meta" color={t.colors.inkMute}>{tr('Guardian')}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+            <Text variant="meta" color={t.colors.inkMute} style={{ marginTop: 12 }}>
+              {tr('Only a guardian can end this. Ask them if something is wrong.')}
+            </Text>
+          </>
+        ) : (
+          <>
+            {children.length === 0 && incoming.length === 0 && outgoing.length === 0 && (
+              <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 12 }}>
+                {tr("Link a child's account to manage who is in their circle. They keep every safety feature — you decide who watches over them.")}
+              </Text>
+            )}
+
+            {children.length > 0 && (
+              <View style={{ gap: 10, marginBottom: 12 }}>
+                {children.map((c, i) => (
+                  <View key={c.id}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      <Avatar name={personName(c)} size={38} photoUri={c.avatar_url ?? undefined} />
+                      <View style={{ flex: 1 }}>
+                        <Text variant="body" weight="semibold">{personName(c)}</Text>
+                        <Text variant="meta" color={t.colors.inkMute}>{tr('Managed account')}</Text>
+                      </View>
+                      <Pressable onPress={() => confirmEnd(c.id, personName(c))} hitSlop={8}>
+                        <Text variant="small" weight="semibold" color={t.colors.crimson}>
+                          {tr('Unlink')}
+                        </Text>
+                      </Pressable>
+                    </View>
+                    {i < children.length - 1 && <Divider style={{ marginTop: 10 }} />}
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {outgoing.map((r) => (
+              <View key={r.id} style={{ marginBottom: 10 }}>
+                <Text variant="small" color={t.colors.inkSoft}>
+                  {tr('Waiting for {name} to accept you as their guardian.', {
+                    name: personName(r.child),
+                  })}
+                </Text>
+              </View>
+            ))}
+
+            <PillButton variant="secondary" block onPress={() => setLinkOpen(true)}>
+              {tr('Link a child account')}
+            </PillButton>
+          </>
+        )}
+
+        {/* Requests waiting on me: to accept my own guardian, or to approve a
+            second guardian for a child I already manage. */}
+        {incoming.map((r) => {
+          const aboutMe = !children.some((c) => c.id === r.childId);
+          return (
+            <View
+              key={r.id}
+              style={{
+                marginTop: 14,
+                backgroundColor: t.colors.gold100,
+                borderRadius: t.radii.md,
+                padding: 12,
+              }}
+            >
+              <Text variant="body" weight="semibold">
+                {aboutMe
+                  ? tr('{name} wants to manage your account', { name: personName(r.guardian) })
+                  : tr('{name} wants to become a guardian for {child}', {
+                      name: personName(r.guardian),
+                      child: personName(r.child),
+                    })}
+              </Text>
+              <Text variant="meta" color={t.colors.inkSoft} style={{ marginTop: 4 }}>
+                {aboutMe
+                  ? tr('Accepting empties your circle and locks it to your guardian. Only they can undo it.')
+                  : tr('They will be added to their circle and can manage it too.')}
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                <PillButton
+                  style={{ flex: 1 }}
+                  disabled={busyId === r.id}
+                  onPress={() => respond(r.id, true)}
+                >
+                  {tr('Accept')}
+                </PillButton>
+                <PillButton
+                  variant="ghost"
+                  style={{ flex: 1 }}
+                  disabled={busyId === r.id}
+                  onPress={() => respond(r.id, false)}
+                >
+                  {tr('Decline')}
+                </PillButton>
+              </View>
+            </View>
+          );
+        })}
+      </Card>
+
+      <LinkChildSheet
+        open={linkOpen}
+        onClose={() => setLinkOpen(false)}
+        onSubmit={requestGuardianship}
+      />
+    </>
+  );
+}
+
+function LinkChildSheet({
+  open,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSubmit: (childId: string) => Promise<{ error?: string }>;
+}) {
+  const t = useTheme();
+  const tr = useT();
+  const { profile } = useAuth();
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<Profile[]>([]);
+  const [selected, setSelected] = useState<Profile | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
+
+  const search = async (q: string) => {
+    const trimmed = q.trim().toLowerCase().replace(/^@/, '');
+    if (trimmed.length < 2) {
+      setResults([]);
+      return;
+    }
+    const { data } = await supabase
+      .from('profiles')
+      .select('*')
+      .or(`username.ilike.%${trimmed}%,name.ilike.%${trimmed}%`)
+      .neq('id', profile?.id ?? '')
+      .limit(8);
+    setResults((data ?? []) as Profile[]);
+  };
+
+  const close = () => {
+    setQuery('');
+    setResults([]);
+    setSelected(null);
+    setErr(null);
+    setSent(false);
+    onClose();
+  };
+
+  const submit = async () => {
+    if (!selected) return;
+    setBusy(true);
+    setErr(null);
+    const res = await onSubmit(selected.id);
+    setBusy(false);
+    if (res.error) setErr(res.error);
+    else {
+      setSent(true);
+      setTimeout(close, 1600);
+    }
+  };
+
+  const inputStyle = {
+    backgroundColor: t.colors.moonlight,
+    borderRadius: t.radii.md,
+    padding: 14,
+    fontFamily: t.type.body,
+    color: t.colors.ink,
+    marginBottom: 12,
+  };
+
+  return (
+    <BottomSheet visible={open} onClose={close}>
+      <Text style={{ fontFamily: t.type.display, fontSize: 24, marginBottom: 4 }}>
+        {tr('Link a child account')}
+      </Text>
+      <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 16 }}>
+        {tr('Find their account, then they accept on their own phone. Once linked, their circle holds only their guardians and only you can change it.')}
+      </Text>
+
+      {selected ? (
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 10,
+            backgroundColor: t.colors.moonlight,
+            borderRadius: t.radii.md,
+            padding: 12,
+            marginBottom: 14,
+          }}
+        >
+          <Avatar name={personName(selected)} size={40} photoUri={selected.avatar_url ?? undefined} />
+          <View style={{ flex: 1 }}>
+            <Text variant="body" weight="semibold">{personName(selected)}</Text>
+            {selected.username && (
+              <Text variant="meta" color={t.colors.inkMute}>@{selected.username}</Text>
+            )}
+          </View>
+          <Pressable onPress={() => setSelected(null)} hitSlop={10}>
+            <Text variant="small" color={t.colors.crimson} weight="semibold">✕</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <>
+          <Eyebrow style={{ marginBottom: 6 }}>{tr('FIND BY USERNAME')}</Eyebrow>
+          <TextInput
+            value={query}
+            onChangeText={(v) => {
+              setQuery(v);
+              search(v);
+            }}
+            placeholder="@username or name"
+            placeholderTextColor={t.colors.inkMute}
+            autoCapitalize="none"
+            autoCorrect={false}
+            style={inputStyle}
+          />
+          {results.length > 0 && (
+            <Card style={{ marginBottom: 14 }}>
+              {results.map((p, i) => (
+                <View key={p.id}>
+                  <Pressable
+                    onPress={() => {
+                      setSelected(p);
+                      setQuery('');
+                      setResults([]);
+                    }}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 }}
+                  >
+                    <Avatar name={personName(p)} size={38} photoUri={p.avatar_url ?? undefined} />
+                    <View style={{ flex: 1 }}>
+                      <Text variant="body" weight="semibold">{personName(p)}</Text>
+                      {p.username && (
+                        <Text variant="meta" color={t.colors.inkMute}>@{p.username}</Text>
+                      )}
+                    </View>
+                  </Pressable>
+                  {i < results.length - 1 && <Divider />}
+                </View>
+              ))}
+            </Card>
+          )}
+        </>
+      )}
+
+      {err && (
+        <Text variant="small" color={t.colors.crimson} style={{ marginBottom: 10 }}>
+          {err}
+        </Text>
+      )}
+      {sent && (
+        <Text variant="small" color={t.colors.statusOk} style={{ marginBottom: 10 }}>
+          {tr('Sent — they need to accept it on their phone ✓')}
+        </Text>
+      )}
+
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <PillButton variant="ghost" style={{ flex: 1 }} onPress={close} disabled={busy}>
+          {tr('Cancel')}
+        </PillButton>
+        <PillButton style={{ flex: 1 }} onPress={submit} disabled={busy || !selected}>
+          {busy ? tr('Sending…') : tr('Send request')}
+        </PillButton>
+      </View>
+    </BottomSheet>
   );
 }
 

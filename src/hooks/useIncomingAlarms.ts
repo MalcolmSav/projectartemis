@@ -27,10 +27,20 @@ export function useIncomingAlarms() {
   membersRef.current = members;
 
   const handleInsert = useCallback(
-    async (row: { id: string; user_id: string; kind: string; created_at: string }) => {
+    async (row: {
+      id: string;
+      user_id: string;
+      kind: string;
+      created_at: string;
+      alert_ids?: string[] | null;
+    }) => {
       if (row.kind !== 'alarm') return;
       if (!user || row.user_id === user.id) return; // never react to our own alarm
       if (shownIds.current.has(row.id)) return;
+      // An alarm from a "check on me" timer names who it's for. Taking over the
+      // screen for someone the sender deliberately left out would leak an alert
+      // they chose not to send, so honour the list. Empty/absent = whole circle.
+      if (Array.isArray(row.alert_ids) && row.alert_ids.length > 0 && !row.alert_ids.includes(user.id)) return;
       const member = membersRef.current.find((m) => m.profile.id === row.user_id);
       if (!member) return; // only circle members, not arbitrary users
       shownIds.current.add(row.id);

@@ -11,6 +11,7 @@ import { useTheme } from '../theme/ThemeProvider';
 import { palette } from '../theme/tokens';
 import { useT } from '../i18n';
 import { useCircle } from '../hooks/useCircle';
+import { useGuardianship } from '../hooks/useGuardianship';
 import { useCheckIns } from '../hooks/useCheckIns';
 import { usePresence } from '../hooks/usePresence';
 import { useAuth } from '../state/Auth';
@@ -24,6 +25,7 @@ export function CircleScreen() {
   const tr = useT();
   const nav = useNavigation<Nav>();
   const { members, pendingInvites, loading, error, invite, accept, decline, remove, refresh } = useCircle();
+  const { isChild, guardians } = useGuardianship();
   const [refreshing, setRefreshing] = useState(false);
   const onPullRefresh = async () => {
     setRefreshing(true);
@@ -31,11 +33,15 @@ export function CircleScreen() {
     setRefreshing(false);
   };
   const confirmRemove = (edgeId: string, name: string) => {
+    // The database refuses this for a managed account anyway; not offering it
+    // beats offering it and failing with a policy error.
+    if (isChild) return;
     Alert.alert('Remove from circle?', `${name} will no longer see your check-ins.`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Remove', style: 'destructive', onPress: () => remove(edgeId) },
     ]);
   };
+  const guardianNames = guardians.map((g) => personName(g)).join(', ');
   const { latestByUser } = useCheckIns();
   const { byUser: presenceByUser } = usePresence();
   const [addOpen, setAddOpen] = useState(false);
@@ -69,30 +75,32 @@ export function CircleScreen() {
     <View style={{ flex: 1, backgroundColor: t.colors.ivoryBg }}>
       <TopBar
         right={
-          <>
-            <Pressable
-              onPress={() => setGroupsOpen(true)}
-              accessibilityRole="button"
-              accessibilityLabel="Manage groups"
-              style={[
-                { paddingHorizontal: 14, height: 40, borderRadius: 999, backgroundColor: t.colors.parchment, alignItems: 'center', justifyContent: 'center' },
-                t.shadows.soft,
-              ]}
-            >
-              <Text variant="small" weight="semibold" color={t.colors.inkSoft}>{tr('Groups')}</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setAddOpen(true)}
-              accessibilityRole="button"
-              accessibilityLabel="Add someone to your circle"
-              style={[
-                { width: 40, height: 40, borderRadius: 999, backgroundColor: t.colors.parchment, alignItems: 'center', justifyContent: 'center' },
-                t.shadows.soft,
-              ]}
-            >
-              <IconPlus color={t.colors.inkSoft} />
-            </Pressable>
-          </>
+          isChild ? null : (
+            <>
+              <Pressable
+                onPress={() => setGroupsOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Manage groups"
+                style={[
+                  { paddingHorizontal: 14, height: 40, borderRadius: 999, backgroundColor: t.colors.parchment, alignItems: 'center', justifyContent: 'center' },
+                  t.shadows.soft,
+                ]}
+              >
+                <Text variant="small" weight="semibold" color={t.colors.inkSoft}>{tr('Groups')}</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setAddOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Add someone to your circle"
+                style={[
+                  { width: 40, height: 40, borderRadius: 999, backgroundColor: t.colors.parchment, alignItems: 'center', justifyContent: 'center' },
+                  t.shadows.soft,
+                ]}
+              >
+                <IconPlus color={t.colors.inkSoft} />
+              </Pressable>
+            </>
+          )
         }
       />
       <ScrollView
@@ -127,7 +135,27 @@ export function CircleScreen() {
           </Pressable>
         )}
 
-        {pendingInvites.length > 0 && (
+        {isChild && (
+          <View
+            style={{
+              backgroundColor: t.colors.gold100,
+              borderRadius: t.radii.md,
+              padding: 14,
+              marginBottom: 16,
+            }}
+          >
+            <Eyebrow color={t.colors.gold700}>{tr('MANAGED ACCOUNT')}</Eyebrow>
+            <Text variant="small" color={t.colors.ink} style={{ marginTop: 4 }}>
+              {guardianNames
+                ? tr('{who} looks after this account. Only they can change who is in your circle.', {
+                    who: guardianNames,
+                  })
+                : tr('A guardian looks after this account. Only they can change who is in your circle.')}
+            </Text>
+          </View>
+        )}
+
+        {!isChild && pendingInvites.length > 0 && (
           <View style={{ marginBottom: 16 }}>
             <Eyebrow style={{ marginBottom: 8 }}>{tr('PENDING INVITES')}</Eyebrow>
             {pendingInvites.map((inv) => (
@@ -169,12 +197,19 @@ export function CircleScreen() {
             ))}
           </View>
         ) : members.length === 0 ? (
-          <EmptyState
-            title={tr('Your circle is waiting')}
-            subtitle={tr('Search for someone by their Artemis username to add them.')}
-            actionLabel={tr('+ Add someone')}
-            onAction={() => setAddOpen(true)}
-          />
+          isChild ? (
+            <EmptyState
+              title={tr('Nothing here yet')}
+              subtitle={tr('Your guardian sets up who watches over you.')}
+            />
+          ) : (
+            <EmptyState
+              title={tr('Your circle is waiting')}
+              subtitle={tr('Search for someone by their Artemis username to add them.')}
+              actionLabel={tr('+ Add someone')}
+              onAction={() => setAddOpen(true)}
+            />
+          )
         ) : (
           <View style={{ gap: 4 }}>
             {members.map((m) => {
@@ -228,22 +263,24 @@ export function CircleScreen() {
           </View>
         )}
 
-        <Pressable
-          onPress={() => setAddOpen(true)}
-          style={{
-            marginTop: 14,
-            padding: 18,
-            borderWidth: 1.5,
-            borderStyle: 'dashed',
-            borderColor: t.colors.hairline,
-            borderRadius: t.radii.lg,
-            alignItems: 'center',
-          }}
-        >
-          <Text variant="body" color={t.colors.inkSoft}>
-            {tr('+ Invite someone')}
-          </Text>
-        </Pressable>
+        {!isChild && (
+          <Pressable
+            onPress={() => setAddOpen(true)}
+            style={{
+              marginTop: 14,
+              padding: 18,
+              borderWidth: 1.5,
+              borderStyle: 'dashed',
+              borderColor: t.colors.hairline,
+              borderRadius: t.radii.lg,
+              alignItems: 'center',
+            }}
+          >
+            <Text variant="body" color={t.colors.inkSoft}>
+              {tr('+ Invite someone')}
+            </Text>
+          </Pressable>
+        )}
       </ScrollView>
 
       <InviteSheet open={addOpen} onClose={() => setAddOpen(false)} onSubmit={invite} />

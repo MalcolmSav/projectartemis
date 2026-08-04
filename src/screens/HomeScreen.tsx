@@ -10,7 +10,7 @@ import Animated, {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { CHECKIN_STALE_MS } from '../lib/constants';
+import { CHECKIN_STALE_MS, TIMER_EXTEND_MS, TIMER_GRACE_MS, TIMER_WARN_MS } from '../lib/constants';
 import {
   TopBar,
   Text,
@@ -41,7 +41,8 @@ import {
 } from '../components/icons';
 import { useTheme } from '../theme/ThemeProvider';
 import { palette } from '../theme/tokens';
-import { useCircle } from '../hooks/useCircle';
+import { useCircle, CircleMember } from '../hooks/useCircle';
+import { useGuardianship } from '../hooks/useGuardianship';
 import { useCheckIns, WELLNESS_TIMEOUT_MS, SentCheck, ReceivedCheck } from '../hooks/useCheckIns';
 import { useSafetyTimer } from '../hooks/useSafetyTimer';
 import { useFollowedTrips } from '../hooks/useFollowedTrips';
@@ -76,6 +77,18 @@ function greeting() {
   return 'Tonight';
 }
 
+/** "your whole circle" / "Emma" / "Emma and 2 others" — who an expiring timer alerts. */
+function alertTargetLabel(ids: string[], members: CircleMember[], tr: TFn) {
+  if (ids.length === 0) return tr('Your whole circle');
+  const names = ids
+    .map((id) => personName(members.find((m) => m.profile.id === id)?.profile ?? null))
+    .filter(Boolean);
+  if (names.length === 0) return tr('Your whole circle');
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return tr('{a} and {b}', { a: names[0], b: names[1] });
+  return tr('{a} and {n} others', { a: names[0], n: names.length - 1 });
+}
+
 function formatCountdown(ms: number) {
   const total = Math.max(0, Math.floor(ms / 1000));
   const m = Math.floor(total / 60);
@@ -92,7 +105,17 @@ export function HomeScreen() {
   const { latestByUser, myLastOkAt, pendingForMe, sentChecks, friendNeedHelp, clearFriendNeedHelp, recordOk, recordAlarm, sendWellnessRequest, respondWellness, refresh: refreshChecks } = useCheckIns();
   const { unreadTotal } = useConversations();
   const { byUser: presenceByUser } = usePresence();
-  const { expiresAt: timerExpiresAt, expired: timerExpired, start: startTimer, clear: clearTimer, claimExpiry: claimTimerExpiry } = useSafetyTimer();
+  const {
+    expiresAt: timerExpiresAt,
+    alertIds: timerAlertIds,
+    expired: timerExpired,
+    inGrace: timerInGrace,
+    alarmAt: timerAlarmAt,
+    start: startTimer,
+    extend: extendTimer,
+    clear: clearTimer,
+    claimExpiry: claimTimerExpiry,
+  } = useSafetyTimer();
   const { trips: followedTrips } = useFollowedTrips();
   const { activeTrip } = useTrips();
   const streak = useStreak();
@@ -100,7 +123,8 @@ export function HomeScreen() {
   const [safetyOpen, setSafetyOpen] = useState(false);
   const [nowTick, setNowTick] = useState(Date.now());
   const timerFiredRef = React.useRef(false);
-  const totalPending = pendingInvites.length + (pendingForMe ? 1 : 0);
+  const { incoming: guardianRequests } = useGuardianship();
+  const totalPending = pendingInvites.length + guardianRequests.length + (pendingForMe ? 1 : 0);
   const [refreshing, setRefreshing] = useState(false);
   const onPullRefresh = async () => {
     setRefreshing(true);
@@ -112,7 +136,8 @@ export function HomeScreen() {
   const [notifOpen, setNotifOpen] = useState(false);
   const shownWellnessRef = React.useRef<Set<string>>(new Set());
 
-  // Live countdown for an active safety timer.
+  // Live countdown for an active safety timer — it keeps running through the
+  // grace window, where the seconds matter most.
   useEffect(() => {
     if (!timerExpiresAt) return;
     if (Date.now() < timerExpiresAt.getTime()) timerFiredRef.current = false;
@@ -120,8 +145,9 @@ export function HomeScreen() {
     return () => clearInterval(id);
   }, [timerExpiresAt]);
 
-  // Dead-man's-switch: when the safety timer expires without a "I'm safe"
-  // confirmation, automatically raise the alarm.
+  // Dead-man's-switch: once the deadline AND the grace window have passed
+  // without a "I'm safe" confirmation, automatically raise the alarm — to the
+  // people the user picked when they started the timer.
   //
   // This is the fast path for a phone that's awake. The server-side watchdog
   // enforces the same deadline for a phone that isn't, so we claim the timer
@@ -129,9 +155,10 @@ export function HomeScreen() {
   useEffect(() => {
     if (!timerExpired || timerFiredRef.current) return;
     timerFiredRef.current = true;
+    const targets = timerAlertIds;
     (async () => {
       const mine = await claimTimerExpiry();
-      if (mine) await recordAlarm('Safety timer expired — auto-alarm');
+      if (mine) await recordAlarm('Safety timer expired — auto-alarm', targets);
       await clearTimer();
       nav.navigate('AlarmActive');
     })();
@@ -384,44 +411,71 @@ export function HomeScreen() {
           </View>
         )}
 
-        {/* Active safety timer banner */}
+        {/* Active safety timer banner. In the grace window it turns red and
+            offers more time — the last chance to answer before people are
+            alerted is not the moment to make the user go hunting for a button. */}
         {timerExpiresAt && !timerExpired && (
           <View style={{ paddingHorizontal: t.spacing.pageH, paddingTop: 12 }}>
             <View
               style={{
-                backgroundColor: t.colors.forest700,
+                backgroundColor: timerInGrace ? palette.crimson : t.colors.forest700,
                 borderRadius: t.radii.lg,
                 padding: 16,
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 14,
+                gap: 12,
               }}
             >
-              <View style={{ flex: 1 }}>
-                <Eyebrow color={palette.gold300}>{tr('SAFETY TIMER RUNNING')}</Eyebrow>
-                <Text style={{ fontFamily: t.type.display, fontSize: 30, lineHeight: 38, paddingTop: 2, color: '#fff', marginTop: 2 }}>
-                  {formatCountdown(timerExpiresAt.getTime() - nowTick)}
-                </Text>
-                <Text variant="meta" color="rgba(255,255,255,0.7)" style={{ marginTop: 2 }}>
-                  {tr("Your circle is alerted if you don't confirm.")}
-                </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                <View style={{ flex: 1 }}>
+                  <Eyebrow color={timerInGrace ? '#fff' : palette.gold300}>
+                    {timerInGrace ? tr('LAST CHANCE — ARE YOU SAFE?') : tr('SAFETY TIMER RUNNING')}
+                  </Eyebrow>
+                  <Text style={{ fontFamily: t.type.display, fontSize: 30, lineHeight: 38, paddingTop: 2, color: '#fff', marginTop: 2 }}>
+                    {formatCountdown(
+                      (timerInGrace && timerAlarmAt ? timerAlarmAt.getTime() : timerExpiresAt.getTime()) - nowTick,
+                    )}
+                  </Text>
+                  <Text variant="meta" color="rgba(255,255,255,0.8)" style={{ marginTop: 2 }}>
+                    {timerInGrace
+                      ? tr('{who} will be alerted when this runs out.', {
+                          who: alertTargetLabel(timerAlertIds, members, tr),
+                        })
+                      : tr('{who} is alerted if you don\'t confirm.', {
+                          who: alertTargetLabel(timerAlertIds, members, tr),
+                        })}
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={async () => {
+                    await recordOk('Confirmed safe — safety timer');
+                    await clearTimer();
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="I'm safe, cancel the safety timer"
+                  style={{
+                    backgroundColor: timerInGrace ? '#fff' : palette.gold500,
+                    borderRadius: 999,
+                    paddingVertical: 12,
+                    paddingHorizontal: 18,
+                  }}
+                >
+                  <Text style={{ fontFamily: t.type.bodyBold, color: palette.forest900, fontSize: 15 }}>
+                    {tr("I'm safe")}
+                  </Text>
+                </Pressable>
               </View>
               <Pressable
-                onPress={async () => {
-                  await recordOk('Confirmed safe — safety timer');
-                  await clearTimer();
-                }}
+                onPress={() => extendTimer(TIMER_EXTEND_MS)}
                 accessibilityRole="button"
-                accessibilityLabel="I'm safe, cancel the safety timer"
                 style={{
-                  backgroundColor: palette.gold500,
                   borderRadius: 999,
-                  paddingVertical: 12,
-                  paddingHorizontal: 18,
+                  paddingVertical: 10,
+                  alignItems: 'center',
+                  borderWidth: 1,
+                  borderColor: 'rgba(255,255,255,0.4)',
                 }}
               >
-                <Text style={{ fontFamily: t.type.bodyBold, color: palette.forest900, fontSize: 15 }}>
-                  {tr("I'm safe")}
+                <Text style={{ fontFamily: t.type.bodySemibold, color: '#fff', fontSize: 14 }}>
+                  {tr('Give me {m} more minutes', { m: Math.round(TIMER_EXTEND_MS / 60000) })}
                 </Text>
               </Pressable>
             </View>
@@ -677,6 +731,10 @@ export function HomeScreen() {
           setNotifOpen(false);
           nav.navigate('Tabs' as any, { screen: 'Map' } as any);
         }}
+        onOpenProfile={() => {
+          setNotifOpen(false);
+          nav.navigate('Tabs' as any, { screen: 'Profile' } as any);
+        }}
         onOpenWellness={(rc) => {
           setNotifOpen(false);
           nav.navigate('WellnessIncoming', {
@@ -691,8 +749,9 @@ export function HomeScreen() {
         open={safetyOpen}
         onClose={() => setSafetyOpen(false)}
         active={timerExpiresAt}
-        onStart={async (ms) => {
-          await startTimer(ms);
+        activeAlertIds={timerAlertIds}
+        onStart={async (ms, targetIds) => {
+          await startTimer(ms, targetIds);
           setSafetyOpen(false);
         }}
         onCancel={async () => {
@@ -710,22 +769,35 @@ function CheckOnMeSheet({
   open,
   onClose,
   active,
+  activeAlertIds,
   onStart,
   onCancel,
 }: {
   open: boolean;
   onClose: () => void;
   active: Date | null;
-  onStart: (durationMs: number) => void;
+  activeAlertIds: string[];
+  onStart: (durationMs: number, targetIds: string[]) => void;
   onCancel: () => void;
 }) {
   const t = useTheme();
   const tr = useT();
+  const { members } = useCircle();
   const [mode, setMode] = useState<'in' | 'at'>('in');
   const now = new Date();
   const [hour, setHour] = useState(now.getHours());
   const [minute, setMinute] = useState((Math.ceil(now.getMinutes() / 5) * 5) % 60);
+  // Empty = everyone. Alerting the whole circle is the safe default; narrowing
+  // it is a deliberate act, so it starts unset every time the sheet opens.
+  const [targets, setTargets] = useState<string[]>([]);
   const DURATIONS = [15, 30, 45, 60, 90, 120];
+
+  React.useEffect(() => {
+    if (open) setTargets([]);
+  }, [open]);
+
+  const toggleTarget = (id: string) =>
+    setTargets((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
 
   const bump = (setter: (v: number) => void, val: number, mod: number, step: number) =>
     setter((((val + step) % mod) + mod) % mod);
@@ -735,7 +807,7 @@ function CheckOnMeSheet({
     const d = new Date();
     d.setHours(hour, minute, 0, 0);
     if (d.getTime() <= Date.now()) d.setDate(d.getDate() + 1); // next day if already passed
-    onStart(d.getTime() - Date.now());
+    onStart(d.getTime() - Date.now(), targets);
   };
 
   return (
@@ -744,7 +816,7 @@ function CheckOnMeSheet({
         {tr('Check on me')}
       </Text>
       <Text variant="small" color={t.colors.inkSoft} style={{ marginBottom: 16 }}>
-        {tr('If you don\'t tap "I\'m safe" in time, your circle is alerted automatically and your live location is shared. Good for a walk, a date, or a late shift.')}
+        {tr('If you don\'t tap "I\'m safe" in time, the people you choose are alerted automatically and your live location is shared. Good for a walk, a date, or a late shift.')}
       </Text>
 
       {active ? (
@@ -759,7 +831,13 @@ function CheckOnMeSheet({
           >
             <Eyebrow color={t.colors.gold700}>{tr('RUNNING')}</Eyebrow>
             <Text variant="body" weight="semibold" style={{ marginTop: 2 }}>
-              {tr('Alerts your circle at {time}', { time: active.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })}
+              {tr('Asks you at {time}', { time: active.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })}
+            </Text>
+            <Text variant="meta" color={t.colors.inkSoft} style={{ marginTop: 4 }}>
+              {tr('{who} is alerted {m} min later if you still haven\'t answered.', {
+                who: alertTargetLabel(activeAlertIds, members, tr),
+                m: Math.round(TIMER_GRACE_MS / 60000),
+              })}
             </Text>
           </View>
           <PillButton variant="danger" block style={{ marginBottom: 8 }} onPress={onCancel}>
@@ -771,6 +849,61 @@ function CheckOnMeSheet({
         </>
       ) : (
         <>
+          {/* Who gets alerted. Defaults to everyone; tapping names narrows it. */}
+          {members.length > 0 && (
+            <>
+              <Eyebrow style={{ marginBottom: 8 }}>{tr('IF I GO QUIET, ALERT')}</Eyebrow>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 6 }}>
+                <Pressable
+                  onPress={() => setTargets([])}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: targets.length === 0 }}
+                  style={{
+                    paddingVertical: 10,
+                    paddingHorizontal: 14,
+                    borderRadius: 999,
+                    backgroundColor: targets.length === 0 ? t.colors.forest700 : t.colors.moonlight,
+                  }}
+                >
+                  <Text variant="small" weight="semibold" color={targets.length === 0 ? palette.gold300 : t.colors.ink}>
+                    {tr('Everyone')}
+                  </Text>
+                </Pressable>
+                {members.map((m) => {
+                  const on = targets.includes(m.profile.id);
+                  return (
+                    <Pressable
+                      key={m.edgeId}
+                      onPress={() => toggleTarget(m.profile.id)}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: on }}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 8,
+                        paddingVertical: 6,
+                        paddingLeft: 6,
+                        paddingRight: 14,
+                        borderRadius: 999,
+                        backgroundColor: on ? t.colors.forest700 : t.colors.moonlight,
+                      }}
+                    >
+                      <Avatar name={personName(m.profile)} size={28} photoUri={m.profile.avatar_url ?? undefined} />
+                      <Text variant="small" weight="semibold" color={on ? palette.gold300 : t.colors.ink}>
+                        {personName(m.profile)}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <Text variant="meta" color={t.colors.inkMute} style={{ marginBottom: 18 }}>
+                {targets.length === 0
+                  ? tr('Everyone in your circle gets the alert.')
+                  : tr('Only {who} gets the alert.', { who: alertTargetLabel(targets, members, tr) })}
+              </Text>
+            </>
+          )}
+
           {/* Mode switch: In (duration) vs At (clock time) */}
           <View style={{ flexDirection: 'row', backgroundColor: t.colors.moonlight, borderRadius: 999, padding: 3, marginBottom: 18 }}>
             {(['in', 'at'] as const).map((m) => {
@@ -797,12 +930,12 @@ function CheckOnMeSheet({
 
           {mode === 'in' ? (
             <>
-              <Eyebrow style={{ marginBottom: 8 }}>{tr("ALERT MY CIRCLE IF I'M SILENT FOR")}</Eyebrow>
+              <Eyebrow style={{ marginBottom: 8 }}>{tr("ASK ME IF I'M SAFE IN")}</Eyebrow>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
                 {DURATIONS.map((m) => (
                   <Pressable
                     key={m}
-                    onPress={() => onStart(m * 60 * 1000)}
+                    onPress={() => onStart(m * 60 * 1000, targets)}
                     style={{
                       paddingVertical: 14,
                       paddingHorizontal: 18,
@@ -851,6 +984,22 @@ function CheckOnMeSheet({
             </>
           )}
 
+          <View
+            style={{
+              backgroundColor: t.colors.moonlight,
+              borderRadius: t.radii.md,
+              padding: 12,
+              marginBottom: 12,
+            }}
+          >
+            <Text variant="meta" color={t.colors.inkSoft}>
+              {tr(
+                "You'll get a heads-up {w} min before, and {g} more minutes to answer after the time is up. Nobody is alerted until then.",
+                { w: Math.round(TIMER_WARN_MS / 60000), g: Math.round(TIMER_GRACE_MS / 60000) },
+              )}
+            </Text>
+          </View>
+
           <PillButton variant="ghost" block onPress={onClose}>
             {tr('Cancel')}
           </PillButton>
@@ -875,19 +1024,26 @@ function NotificationsSheet({
   onClose,
   onOpenCircle,
   onOpenMap,
+  onOpenProfile,
   onOpenWellness,
 }: {
   open: boolean;
   onClose: () => void;
   onOpenCircle: () => void;
   onOpenMap: () => void;
+  onOpenProfile: () => void;
   onOpenWellness: (rc: ReceivedCheck) => void;
 }) {
   const t = useTheme();
   const tr = useT();
   const { pendingInvites } = useCircle();
   const { receivedChecks, sentChecks } = useCheckIns();
-  const empty = pendingInvites.length === 0 && receivedChecks.length === 0 && sentChecks.length === 0;
+  const { incoming: guardianRequests } = useGuardianship();
+  const empty =
+    pendingInvites.length === 0 &&
+    guardianRequests.length === 0 &&
+    receivedChecks.length === 0 &&
+    sentChecks.length === 0;
 
   const statusFor = (s: (typeof sentChecks)[number]['status']) => {
     switch (s) {
@@ -973,6 +1129,34 @@ function NotificationsSheet({
               })}
             </>
           )}
+          {/* Answered on the Profile screen, where the consequences of accepting
+              are spelled out — this is only the nudge that one is waiting. */}
+          {guardianRequests.map((r) => (
+            <Pressable
+              key={r.id}
+              onPress={onOpenProfile}
+              style={{
+                backgroundColor: t.colors.gold100,
+                borderRadius: t.radii.md,
+                padding: 14,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 12,
+              }}
+            >
+              <Avatar name={personName(r.guardian)} size={40} photoUri={r.guardian?.avatar_url ?? undefined} />
+              <View style={{ flex: 1 }}>
+                <Text variant="body" weight="semibold">
+                  {personName(r.guardian)}
+                </Text>
+                <Text variant="meta" color={t.colors.inkMute}>
+                  {tr('wants to manage an account · tap to review')}
+                </Text>
+              </View>
+              <IconChevron color={t.colors.inkMute} />
+            </Pressable>
+          ))}
+
           {pendingInvites.map((inv) => (
             <Pressable
               key={inv.id}

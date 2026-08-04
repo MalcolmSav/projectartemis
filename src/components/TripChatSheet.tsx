@@ -38,8 +38,49 @@ export function TripChatSheet({
     if (res.error) setDraft(text); // keep it so nothing is silently lost
   };
 
+  // Pinned to the bottom of the sheet rather than sitting at the end of the
+  // scrolling message list — otherwise a busy trip pushes it under the keyboard.
+  const composer = (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 10 }}>
+      <TextInput
+        value={draft}
+        onChangeText={setDraft}
+        placeholder={tr('Message…')}
+        placeholderTextColor={t.colors.inkMute}
+        style={{
+          flex: 1,
+          backgroundColor: t.colors.moonlight,
+          borderRadius: 999,
+          paddingVertical: 12,
+          paddingHorizontal: 16,
+          fontFamily: t.type.body,
+          color: t.colors.ink,
+        }}
+        onSubmitEditing={submit}
+        returnKeyType="send"
+        // Keep the keyboard up between messages — a trip chat is a back-and-forth.
+        submitBehavior="submit"
+      />
+      <Pressable
+        onPress={submit}
+        disabled={sending || !draft.trim()}
+        accessibilityLabel={tr('Send')}
+        style={{
+          width: 44,
+          height: 44,
+          borderRadius: 999,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: draft.trim() ? t.colors.forest700 : t.colors.hairline,
+        }}
+      >
+        <Text style={{ color: draft.trim() ? palette.gold300 : t.colors.inkMute, fontSize: 17 }}>↑</Text>
+      </Pressable>
+    </View>
+  );
+
   return (
-    <BottomSheet visible={visible} onClose={onClose}>
+    <BottomSheet visible={visible} onClose={onClose} footer={composer}>
       <Text style={{ fontFamily: t.type.display, fontSize: 22, lineHeight: 28, marginBottom: 2 }}>
         {tr('Trip chat')}
       </Text>
@@ -103,41 +144,6 @@ export function TripChatSheet({
           })}
         </View>
       )}
-
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
-        <TextInput
-          value={draft}
-          onChangeText={setDraft}
-          placeholder={tr('Message…')}
-          placeholderTextColor={t.colors.inkMute}
-          style={{
-            flex: 1,
-            backgroundColor: t.colors.moonlight,
-            borderRadius: 999,
-            paddingVertical: 12,
-            paddingHorizontal: 16,
-            fontFamily: t.type.body,
-            color: t.colors.ink,
-          }}
-          onSubmitEditing={submit}
-          returnKeyType="send"
-        />
-        <Pressable
-          onPress={submit}
-          disabled={sending || !draft.trim()}
-          accessibilityLabel={tr('Send')}
-          style={{
-            width: 44,
-            height: 44,
-            borderRadius: 999,
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: draft.trim() ? t.colors.forest700 : t.colors.hairline,
-          }}
-        >
-          <Text style={{ color: draft.trim() ? palette.gold300 : t.colors.inkMute, fontSize: 17 }}>↑</Text>
-        </Pressable>
-      </View>
     </BottomSheet>
   );
 }

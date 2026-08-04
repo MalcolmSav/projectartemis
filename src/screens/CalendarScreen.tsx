@@ -33,11 +33,17 @@ function startWeekday(year: number, month0: number) {
   return (js + 6) % 7;
 }
 
+/** "21:00 – 23:30", "21:00", or "" — whichever the event actually has. */
+function timeRange(e: { time: string | null; end_time: string | null }) {
+  if (!e.time) return e.end_time ? `→ ${e.end_time}` : '';
+  return e.end_time ? `${e.time} – ${e.end_time}` : e.time;
+}
+
 export function CalendarScreen() {
   const t = useTheme();
   const tr = useT();
   const { user } = useAuth();
-  const { events, friendEvents, error: eventsError, addEvent, removeEvent, refresh } = useEvents();
+  const { events, friendEvents, error: eventsError, addEvent, updateEvent, removeEvent, refresh } = useEvents();
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<DBEvent | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
@@ -309,8 +315,8 @@ export function CalendarScreen() {
                       <View style={{ flex: 1 }}>
                         <Text style={{ fontFamily: t.type.display, fontSize: 18, lineHeight: 24 }}>{e.title}</Text>
                         <Text variant="small" color={t.colors.inkMute} style={{ marginTop: 2 }}>
-                          {e.time ? `${e.time}` : ''}
-                          {e.location ? ` · ${e.location}` : ''}
+                          {timeRange(e)}
+                          {e.location ? `${timeRange(e) ? ' · ' : ''}${e.location}` : ''}
                         </Text>
                         {e.notes ? (
                           <Text variant="meta" color={t.colors.inkSoft} style={{ marginTop: 6 }}>
@@ -364,10 +370,10 @@ export function CalendarScreen() {
                         <Text style={{ fontFamily: t.type.display, fontSize: 18, lineHeight: 24, marginTop: 2 }}>
                           {e.title}
                         </Text>
-                        {(e.time || e.location) && (
+                        {(e.time || e.end_time || e.location) && (
                           <Text variant="small" color={t.colors.inkMute} style={{ marginTop: 2 }}>
-                            {e.time ?? ''}
-                            {e.location ? ` · ${e.location}` : ''}
+                            {timeRange(e)}
+                            {e.location ? `${timeRange(e) ? ' · ' : ''}${e.location}` : ''}
                           </Text>
                         )}
                       </View>
@@ -390,24 +396,7 @@ export function CalendarScreen() {
         }}
         editing={editing}
         defaultDate={prefillDate ?? ymd(year, month0, today.getDate())}
-        onSave={async (payload) => {
-          if (editing) {
-            await supabase
-              .from('events')
-              .update({
-                date: payload.date,
-                title: payload.title,
-                time: payload.time ?? null,
-                location: payload.location ?? null,
-                notes: payload.notes ?? null,
-                check_in: !!payload.checkIn,
-              })
-              .eq('id', editing.id);
-            await refresh();
-            return {};
-          }
-          return addEvent(payload);
-        }}
+        onSave={async (payload) => (editing ? updateEvent(editing.id, payload) : addEvent(payload))}
       />
 
       <CalendarShareSheet open={shareOpen} onClose={() => { setShareOpen(false); refresh(); }} />
@@ -425,7 +414,15 @@ function EventSheet({
 }: {
   open: boolean;
   onClose: () => void;
-  onSave: (e: { date: string; title: string; time?: string; location?: string; notes?: string; checkIn?: boolean }) => Promise<{ error?: string }>;
+  onSave: (e: {
+    date: string;
+    title: string;
+    time?: string;
+    endTime?: string;
+    location?: string;
+    notes?: string;
+    checkIn?: boolean;
+  }) => Promise<{ error?: string }>;
   editing: DBEvent | null;
   defaultDate: string;
   prefillDate?: string | null;
@@ -435,6 +432,7 @@ function EventSheet({
   const [title, setTitle] = useState('');
   const [date, setDate] = useState(defaultDate);
   const [time, setTime] = useState('');
+  const [endTime, setEndTime] = useState('');
   const [location, setLocation] = useState('');
   const [notes, setNotes] = useState('');
   const [checkIn, setCheckIn] = useState(false);
@@ -446,6 +444,7 @@ function EventSheet({
         setTitle(editing.title);
         setDate(editing.date);
         setTime(editing.time ?? '');
+        setEndTime(editing.end_time ?? '');
         setLocation(editing.location ?? '');
         setNotes(editing.notes ?? '');
         setCheckIn(editing.check_in);
@@ -453,6 +452,7 @@ function EventSheet({
         setTitle('');
         setDate(prefillDate ?? defaultDate);
         setTime('');
+        setEndTime('');
         setLocation('');
         setNotes('');
         setCheckIn(false);
@@ -463,13 +463,15 @@ function EventSheet({
 
   // The numeric keypad has no ":" or "-" keys, so users can't type separators —
   // insert them automatically as digits come in.
-  const onTimeChange = (raw: string) => {
+  const formatTime = (raw: string) => {
     let d = raw.replace(/\D/g, '').slice(0, 4);
     if (d.length >= 1 && parseInt(d[0], 10) > 2) d = '0' + d;        // "9…"  → "09…"
     if (d.length >= 3 && parseInt(d[2], 10) > 5) d = d.slice(0, 2) + '0' + d[2]; // "21:7" → "21:07"
     d = d.slice(0, 4);
-    setTime(d.length > 2 ? `${d.slice(0, 2)}:${d.slice(2)}` : d);
+    return d.length > 2 ? `${d.slice(0, 2)}:${d.slice(2)}` : d;
   };
+  const onTimeChange = (raw: string) => setTime(formatTime(raw));
+  const onEndTimeChange = (raw: string) => setEndTime(formatTime(raw));
   const onDateChange = (raw: string) => {
     const d = raw.replace(/\D/g, '').slice(0, 8);
     let out = d;
@@ -481,13 +483,20 @@ function EventSheet({
   const submit = async () => {
     if (!title.trim()) return setErr(tr('Title is required'));
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return setErr(tr('Date must be YYYY-MM-DD'));
-    if (time.trim() && !/^([01]\d|2[0-3]):[0-5]\d$/.test(time.trim()))
+    const HM = /^([01]\d|2[0-3]):[0-5]\d$/;
+    if (time.trim() && !HM.test(time.trim()))
       return setErr(tr('Time must be HH:MM (e.g. 21:00)'));
+    if (endTime.trim() && !HM.test(endTime.trim()))
+      return setErr(tr('End time must be HH:MM (e.g. 23:30)'));
+    // An end time on its own has nothing to end, and the check-in reminder has
+    // no start to fall back to — ask for the start rather than guessing 09:00.
+    if (endTime.trim() && !time.trim()) return setErr(tr('Add a start time first'));
     setBusy(true);
     const res = await onSave({
       date,
       title: title.trim(),
       time: time.trim() || undefined,
+      endTime: endTime.trim() || undefined,
       location: location.trim() || undefined,
       notes: notes.trim() || undefined,
       checkIn,
@@ -515,8 +524,32 @@ function EventSheet({
       <TextInput value={title} onChangeText={setTitle} style={input} placeholderTextColor={t.colors.inkMute} placeholder="Girls night" />
       <Eyebrow style={{ marginBottom: 6 }}>{tr('DATE')}</Eyebrow>
       <TextInput value={date} onChangeText={onDateChange} style={input} placeholderTextColor={t.colors.inkMute} placeholder="YYYY-MM-DD" keyboardType="numeric" maxLength={10} />
-      <Eyebrow style={{ marginBottom: 6 }}>{tr('TIME')}</Eyebrow>
-      <TextInput value={time} onChangeText={onTimeChange} style={input} placeholderTextColor={t.colors.inkMute} placeholder={tr('e.g. 2130 → 21:30 (optional)')} keyboardType="numeric" maxLength={5} />
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        <View style={{ flex: 1 }}>
+          <Eyebrow style={{ marginBottom: 6 }}>{tr('STARTS')}</Eyebrow>
+          <TextInput
+            value={time}
+            onChangeText={onTimeChange}
+            style={input}
+            placeholderTextColor={t.colors.inkMute}
+            placeholder={tr('e.g. 2130')}
+            keyboardType="numeric"
+            maxLength={5}
+          />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Eyebrow style={{ marginBottom: 6 }}>{tr('ENDS')}</Eyebrow>
+          <TextInput
+            value={endTime}
+            onChangeText={onEndTimeChange}
+            style={input}
+            placeholderTextColor={t.colors.inkMute}
+            placeholder={tr('e.g. 2330')}
+            keyboardType="numeric"
+            maxLength={5}
+          />
+        </View>
+      </View>
       <Eyebrow style={{ marginBottom: 6 }}>{tr('LOCATION')}</Eyebrow>
       <TextInput value={location} onChangeText={setLocation} style={input} placeholderTextColor={t.colors.inkMute} placeholder="Stureplan" />
       <Eyebrow style={{ marginBottom: 6 }}>{tr('NOTES')}</Eyebrow>
@@ -528,7 +561,11 @@ function EventSheet({
             {tr('Check-in expected')}
           </Text>
           <Text variant="meta" color={t.colors.inkMute}>
-            {tr('Auto wellness check at end of event')}
+            {endTime.trim()
+              ? tr('Reminder at {time}, when it ends', { time: endTime.trim() })
+              : time.trim()
+                ? tr('Reminder at {time} — add an end time to move it', { time: time.trim() })
+                : tr('Auto wellness check at end of event')}
           </Text>
         </View>
         <Toggle on={checkIn} onChange={setCheckIn} />

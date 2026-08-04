@@ -47,8 +47,11 @@ CREATE TABLE IF NOT EXISTS safety_timers (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   -- Set by the watchdog when it raises the alarm, so a timer is never fired
   -- twice if a scan overlaps the next one.
-  fired_at   TIMESTAMPTZ
+  fired_at   TIMESTAMPTZ,
+  -- Who to alert when it fires. NULL/empty = the whole circle.
+  alert_ids  UUID[]
 );
+ALTER TABLE safety_timers ADD COLUMN IF NOT EXISTS alert_ids UUID[];
 
 CREATE INDEX IF NOT EXISTS safety_timers_due_idx
   ON safety_timers (expires_at)

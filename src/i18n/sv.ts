@@ -47,7 +47,14 @@ export const sv: Record<string, string> = {
   'ends {time}': 'slutar {time}',
   '📞  Call 112 — emergency instructions': '📞  Ring 112 — nödinstruktioner',
   'SAFETY TIMER RUNNING': 'SÄKERHETSTIMER PÅGÅR',
+  'LAST CHANCE — ARE YOU SAFE?': 'SISTA CHANSEN — ÄR DU TRYGG?',
   "Your circle is alerted if you don't confirm.": 'Din cirkel larmas om du inte bekräftar.',
+  "{who} is alerted if you don't confirm.": '{who} larmas om du inte bekräftar.',
+  '{who} will be alerted when this runs out.': '{who} larmas när tiden går ut.',
+  'Give me {m} more minutes': 'Ge mig {m} minuter till',
+  'Your whole circle': 'Hela din cirkel',
+  '{a} and {b}': '{a} och {b}',
+  '{a} and {n} others': '{a} och {n} andra',
   "I'm safe": 'Jag är trygg',
   'Your circle is empty.': 'Din cirkel är tom.',
   'Go to the Circle tab below to add someone by username.': 'Gå till fliken Cirkel nedan för att lägga till någon med användarnamn.',
@@ -73,12 +80,24 @@ export const sv: Record<string, string> = {
   // ── Check on me sheet ─────────────────────────────────
   "If you don't tap \"I'm safe\" in time, your circle is alerted automatically and your live location is shared. Good for a walk, a date, or a late shift.":
     'Om du inte trycker "Jag är trygg" i tid larmas din cirkel automatiskt och din live-plats delas. Bra för en promenad, en dejt eller ett sent skift.',
+  "If you don't tap \"I'm safe\" in time, the people you choose are alerted automatically and your live location is shared. Good for a walk, a date, or a late shift.":
+    'Om du inte trycker "Jag är trygg" i tid larmas de du valt automatiskt och din live-plats delas. Bra för en promenad, en dejt eller ett sent skift.',
   RUNNING: 'PÅGÅR',
   'Alerts your circle at {time}': 'Larmar din cirkel {time}',
+  'Asks you at {time}': 'Frågar dig {time}',
+  "{who} is alerted {m} min later if you still haven't answered.":
+    '{who} larmas {m} min senare om du fortfarande inte har svarat.',
+  'IF I GO QUIET, ALERT': 'OM JAG TYSTNAR, LARMA',
+  Everyone: 'Alla',
+  'Everyone in your circle gets the alert.': 'Alla i din cirkel får larmet.',
+  'Only {who} gets the alert.': 'Bara {who} får larmet.',
+  "You'll get a heads-up {w} min before, and {g} more minutes to answer after the time is up. Nobody is alerted until then.":
+    'Du får en förvarning {w} min innan, och {g} minuter till att svara efter att tiden gått ut. Ingen larmas innan dess.',
   'Cancel check-in': 'Avbryt incheckning',
   'In…': 'Om…',
   'At a time': 'Vid en tid',
   "ALERT MY CIRCLE IF I'M SILENT FOR": 'LARMA MIN CIRKEL OM JAG ÄR TYST I',
+  "ASK ME IF I'M SAFE IN": 'FRÅGA OM JAG ÄR TRYGG OM',
   'CHECK ON ME AT': 'KOLLA PÅ MIG KL',
   'Check on me at {time}': 'Kolla på mig kl {time}',
   '{m} min': '{m} min',
@@ -88,6 +107,11 @@ export const sv: Record<string, string> = {
   'WELLNESS CHECK 🏹': 'MÅENDE-KOLL 🏹',
   'is checking in on you.': 'kollar hur du mår.',
   'Tap a response before the timer runs out.': 'Tryck på ett svar innan tiden går ut.',
+  'Closing in {s}s — tap a response, or ask for more time.':
+    'Stängs om {s}s — tryck på ett svar, eller be om mer tid.',
+  'Still there? This closes in a moment — you can answer from the app either way.':
+    'Är du kvar? Detta stängs strax — du kan svara från appen ändå.',
+  'Give me another {s} seconds': 'Ge mig {s} sekunder till',
   '✅  All good!': '✅  Allt bra!',
   '⚠️  I need help · let {name} know': '⚠️  Jag behöver hjälp · låt {name} veta',
   '🚨  ALARM · alert entire circle': '🚨  LARM · larma hela cirkeln',
@@ -165,6 +189,49 @@ export const sv: Record<string, string> = {
   'Delete failed': 'Radering misslyckades',
   'Artemis · she who watches': 'Artemis · hon som vaktar',
 
+  // ── Family / child accounts ───────────────────────────
+  FAMILY: 'FAMILJ',
+  'This account is managed': 'Detta konto hanteras av någon annan',
+  'Your circle is locked to your guardian(s). Everything else — check-ins, alarms, trips, calling for help — works exactly as normal.':
+    'Din cirkel är låst till din/dina vårdnadshavare. Allt annat — incheckningar, larm, resor, att ringa efter hjälp — fungerar precis som vanligt.',
+  Guardian: 'Vårdnadshavare',
+  'Only a guardian can end this. Ask them if something is wrong.':
+    'Bara en vårdnadshavare kan avsluta detta. Prata med dem om något är fel.',
+  "Link a child's account to manage who is in their circle. They keep every safety feature — you decide who watches over them.":
+    'Länka ett barns konto för att styra vilka som finns i deras cirkel. De behåller alla säkerhetsfunktioner — du bestämmer vilka som vakar över dem.',
+  'Managed account': 'Hanterat konto',
+  Unlink: 'Ta bort länk',
+  'Waiting for {name} to accept you as their guardian.':
+    'Väntar på att {name} ska acceptera dig som vårdnadshavare.',
+  'Link a child account': 'Länka ett barnkonto',
+  'Find their account, then they accept on their own phone. Once linked, their circle holds only their guardians and only you can change it.':
+    'Hitta deras konto — sedan accepterar de på sin egen telefon. När kontot är länkat innehåller deras cirkel bara vårdnadshavare, och bara du kan ändra den.',
+  'Sent — they need to accept it on their phone ✓':
+    'Skickat — de behöver acceptera det på sin telefon ✓',
+  'Send request': 'Skicka förfrågan',
+  '{name} wants to manage your account': '{name} vill hantera ditt konto',
+  '{name} wants to become a guardian for {child}':
+    '{name} vill bli vårdnadshavare för {child}',
+  'Accepting empties your circle and locks it to your guardian. Only they can undo it.':
+    'Att acceptera tömmer din cirkel och låser den till din vårdnadshavare. Bara de kan ångra det.',
+  'They will be added to their circle and can manage it too.':
+    'De läggs till i deras cirkel och kan hantera den också.',
+  'Stop managing {name}?': 'Sluta hantera {name}?',
+  'Their circle unlocks and you are removed from it. You can link again later.':
+    'Deras cirkel låses upp och du tas bort ur den. Du kan länka igen senare.',
+  'Stop managing': 'Sluta hantera',
+  "That didn't work": 'Det gick inte',
+  'MANAGED ACCOUNT': 'HANTERAT KONTO',
+  '{who} looks after this account. Only they can change who is in your circle.':
+    '{who} ser efter detta konto. Bara de kan ändra vilka som finns i din cirkel.',
+  'A guardian looks after this account. Only they can change who is in your circle.':
+    'En vårdnadshavare ser efter detta konto. Bara de kan ändra vilka som finns i din cirkel.',
+  'Nothing here yet': 'Inget här än',
+  'Your guardian sets up who watches over you.':
+    'Din vårdnadshavare bestämmer vilka som vakar över dig.',
+  'wants to manage an account · tap to review':
+    'vill hantera ett konto · tryck för att granska',
+
   // ── Circle ────────────────────────────────────────────
   My: 'Min',
   circle: 'cirkel',
@@ -206,6 +273,8 @@ export const sv: Record<string, string> = {
   TITLE: 'TITEL',
   DATE: 'DATUM',
   TIME: 'TID',
+  STARTS: 'BÖRJAR',
+  ENDS: 'SLUTAR',
   LOCATION: 'PLATS',
   NOTES: 'ANTECKNINGAR',
   'Check-in expected': 'Incheckning förväntas',
@@ -227,7 +296,14 @@ export const sv: Record<string, string> = {
   'Title is required': 'Titel krävs',
   'Date must be YYYY-MM-DD': 'Datum måste vara ÅÅÅÅ-MM-DD',
   'Time must be HH:MM (e.g. 21:00)': 'Tid måste vara HH:MM (t.ex. 21:00)',
+  'End time must be HH:MM (e.g. 23:30)': 'Sluttid måste vara HH:MM (t.ex. 23:30)',
+  'Add a start time first': 'Lägg till en starttid först',
   'e.g. 2130 → 21:30 (optional)': 't.ex. 2130 → 21:30 (valfritt)',
+  'e.g. 2130': 't.ex. 2130',
+  'e.g. 2330': 't.ex. 2330',
+  'Reminder at {time}, when it ends': 'Påminnelse kl {time}, när den slutar',
+  'Reminder at {time} — add an end time to move it':
+    'Påminnelse kl {time} — lägg till en sluttid för att flytta den',
   '🛡 CHECK-IN': '🛡 INCHECKNING',
 
   // ── Chat ─────────────────────────────────────────────
@@ -403,8 +479,8 @@ export const sv: Record<string, string> = {
     'Skicka en snabb "mår du bra?" till någon i din cirkel. De har 30 minuter på sig att svara — och du får veta direkt, till och med varifrån de svarade.',
   'Schedule a realistic incoming call to give yourself an easy, believable way out of any situation.':
     'Schemalägg ett realistiskt inkommande samtal för att ge dig själv en enkel, trovärdig väg ut ur vilken situation som helst.',
-  'Set a timer before a walk, a date, or a late shift. If you don’t confirm you’re safe in time, your circle is alerted and your live location is shared.':
-    'Ställ in en timer före en promenad, en dejt eller ett sent skift. Om du inte bekräftar att du är trygg i tid larmas din cirkel och din live-plats delas.',
+  'Set a timer before a walk, a date, or a late shift, and choose who should hear about it. You get a heads-up before the deadline and a few extra minutes after it — then, if you still haven’t confirmed you’re safe, they’re alerted and your live location is shared.':
+    'Ställ in en timer före en promenad, en dejt eller ett sent skift, och välj vilka som ska få veta. Du får en förvarning innan tiden går ut och några extra minuter efteråt — sedan, om du fortfarande inte har bekräftat att du är trygg, larmas de och din live-plats delas.',
   'See your circle’s live locations and community safety reports near you. Flag an unsafe area to quietly warn others.':
     'Se din cirkels live-platser och säkerhetsrapporter från communityn nära dig. Markera ett osäkert område för att diskret varna andra.',
   'Choose exactly who in your circle can see your live location — and turn it on or off in one tap, anytime.':

@@ -186,3 +186,285 @@ BEGIN
   ALTER PUBLICATION supabase_realtime ADD TABLE trip_buddies;
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
+
+-- ── 7. Event end times ──────────────────────────────────────────────────────
+-- A check-in flagged event promises a prompt "at the end of the event", but an
+-- event only had a start, so the app asked "are you home safe?" the minute you
+-- arrived. "HH:MM", same shape as `time`; an end earlier than the start means
+-- the event runs past midnight.
+ALTER TABLE events ADD COLUMN IF NOT EXISTS end_time TEXT;
+
+-- ── 8. "Check on me" — who to alert ─────────────────────────────────────────
+-- The timer alerted the entire circle, always. Users setting one before a date
+-- or a late shift want a specific person told, not everybody. NULL or empty
+-- keeps the old behaviour (whole circle), so existing rows need no backfill.
+ALTER TABLE safety_timers ADD COLUMN IF NOT EXISTS alert_ids UUID[];
+
+-- The chosen recipients ride along on the alarm the timer raises, since that is
+-- the row the notify webhook actually fans out from. Every other alarm (the red
+-- button, a wellness response) leaves it NULL and still reaches the whole circle.
+ALTER TABLE check_ins ADD COLUMN IF NOT EXISTS alert_ids UUID[];
+
+-- NOTE: the watchdog now fires a timer at expires_at + 5 min (the grace window
+-- the app shows as "last chance"), so redeploy it alongside this migration:
+--   npx supabase functions deploy watchdog --project-ref pbqcsgthnwaqpddsucrx
+--   npx supabase functions deploy notify   --project-ref pbqcsgthnwaqpddsucrx
+
+-- ── 9. Child accounts (parental control) ────────────────────────────────────
+--
+--  A child account is one that has at least one guardian. The rule the whole
+--  section exists to enforce: A CHILD'S CIRCLE CONTAINS THEIR GUARDIANS AND
+--  NOBODY ELSE. Hiding the "add" button is not enough — anyone can call the
+--  REST API directly — so the invariant lives in triggers on `circles` and
+--  `invites`, which fire no matter which RPC or client did the write.
+--
+--  Deliberately NOT restricted: alarms, wellness responses, emergency calling,
+--  and delete_my_account. A parental control that can stop a child raising an
+--  alarm is a safety hazard, not a feature.
+
+CREATE TABLE IF NOT EXISTS guardians (
+  child_id    UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  guardian_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (child_id, guardian_id),
+  CONSTRAINT guardians_not_self CHECK (child_id <> guardian_id)
+);
+CREATE INDEX IF NOT EXISTS guardians_guardian_idx ON guardians (guardian_id);
+
+CREATE TABLE IF NOT EXISTS guardian_requests (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  guardian_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  child_id    UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  status      TEXT NOT NULL DEFAULT 'pending',   -- pending | accepted | declined
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS guardian_requests_child_idx
+  ON guardian_requests (child_id) WHERE status = 'pending';
+
+-- ── Helpers (SECURITY DEFINER so triggers and policies can read past RLS) ───
+CREATE OR REPLACE FUNCTION public.is_child(u UUID)
+RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT EXISTS (SELECT 1 FROM public.guardians WHERE child_id = u);
+$$;
+REVOKE ALL ON FUNCTION public.is_child(UUID) FROM public;
+GRANT EXECUTE ON FUNCTION public.is_child(UUID) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.is_guardian_of(g UUID, c UUID)
+RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT EXISTS (SELECT 1 FROM public.guardians WHERE guardian_id = g AND child_id = c);
+$$;
+REVOKE ALL ON FUNCTION public.is_guardian_of(UUID, UUID) FROM public;
+GRANT EXECUTE ON FUNCTION public.is_guardian_of(UUID, UUID) TO authenticated;
+
+-- ── RLS: both sides of a link can see it; all writes go through the RPCs ────
+ALTER TABLE guardians         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE guardian_requests ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS guardians_visible ON guardians;
+CREATE POLICY guardians_visible ON guardians
+  FOR SELECT USING (auth.uid() = child_id OR auth.uid() = guardian_id);
+
+DROP POLICY IF EXISTS guardian_requests_visible ON guardian_requests;
+CREATE POLICY guardian_requests_visible ON guardian_requests
+  FOR SELECT USING (
+    auth.uid() = child_id
+    OR auth.uid() = guardian_id
+    -- An existing guardian vets requests from anyone else wanting in.
+    OR public.is_guardian_of(auth.uid(), child_id)
+  );
+
+-- ── The lock ────────────────────────────────────────────────────────────────
+-- A child may not be on either side of a circle edge with anyone but a guardian.
+CREATE OR REPLACE FUNCTION public.enforce_child_circle()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF public.is_child(NEW.owner_id) AND NOT public.is_guardian_of(NEW.member_id, NEW.owner_id) THEN
+    RAISE EXCEPTION 'This is a child account — only a guardian can be in its circle'
+      USING ERRCODE = 'check_violation';
+  END IF;
+  IF public.is_child(NEW.member_id) AND NOT public.is_guardian_of(NEW.owner_id, NEW.member_id) THEN
+    RAISE EXCEPTION 'That is a child account — only a guardian can be in its circle'
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS circles_child_lock ON circles;
+CREATE TRIGGER circles_child_lock
+  BEFORE INSERT OR UPDATE ON circles
+  FOR EACH ROW EXECUTE FUNCTION public.enforce_child_circle();
+
+-- A child cannot drop their guardian. The guardian can (end_guardianship), and
+-- so can any caller that has set the bypass — which is only ever done inside the
+-- functions below and in delete_my_account, so a child can still delete their
+-- account and take the whole link with it.
+CREATE OR REPLACE FUNCTION public.enforce_child_circle_delete()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF coalesce(current_setting('artemis.child_lock_bypass', true), '') = 'on' THEN
+    RETURN OLD;
+  END IF;
+  IF auth.uid() IS NULL THEN            -- service role / scheduled jobs
+    RETURN OLD;
+  END IF;
+  IF (public.is_child(OLD.owner_id) AND auth.uid() = OLD.owner_id)
+     OR (public.is_child(OLD.member_id) AND auth.uid() = OLD.member_id) THEN
+    RAISE EXCEPTION 'This is a child account — only a guardian can change its circle'
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN OLD;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS circles_child_lock_delete ON circles;
+CREATE TRIGGER circles_child_lock_delete
+  BEFORE DELETE ON circles
+  FOR EACH ROW EXECUTE FUNCTION public.enforce_child_circle_delete();
+
+-- Invites are the other way into a circle, so they're closed off too — in both
+-- directions, or a stranger could invite a child and the child's acceptance
+-- would be blocked at `circles` with a confusing error instead of never offered.
+CREATE OR REPLACE FUNCTION public.enforce_child_invites()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF public.is_child(NEW.from_user) THEN
+    RAISE EXCEPTION 'Child accounts cannot invite people to their circle'
+      USING ERRCODE = 'check_violation';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM public.profiles p
+    WHERE lower(p.email) = lower(NEW.to_email) AND public.is_child(p.id)
+  ) THEN
+    RAISE EXCEPTION 'That is a child account — ask their guardian instead'
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS invites_child_lock ON invites;
+CREATE TRIGGER invites_child_lock
+  BEFORE INSERT ON invites
+  FOR EACH ROW EXECUTE FUNCTION public.enforce_child_invites();
+
+-- ── RPCs ────────────────────────────────────────────────────────────────────
+
+-- Ask to become a guardian of `child`.
+CREATE OR REPLACE FUNCTION public.request_guardianship(child UUID)
+RETURNS UUID LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  me  UUID := auth.uid();
+  req UUID;
+BEGIN
+  IF me IS NULL THEN RAISE EXCEPTION 'Not authenticated'; END IF;
+  IF me = child THEN RAISE EXCEPTION 'You cannot guard your own account'; END IF;
+  IF public.is_child(me) THEN
+    RAISE EXCEPTION 'A managed account cannot become a guardian';
+  END IF;
+  IF public.is_guardian_of(me, child) THEN
+    RAISE EXCEPTION 'You already manage that account';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM guardian_requests
+    WHERE guardian_id = me AND child_id = child AND status = 'pending'
+  ) THEN
+    RAISE EXCEPTION 'You already asked — it is waiting to be approved';
+  END IF;
+
+  INSERT INTO guardian_requests (guardian_id, child_id)
+  VALUES (me, child)
+  RETURNING id INTO req;
+  RETURN req;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.request_guardianship(UUID) FROM public;
+GRANT EXECUTE ON FUNCTION public.request_guardianship(UUID) TO authenticated;
+
+-- Answer a guardianship request.
+--
+-- WHO may answer is the whole security story. The first link is the child's own
+-- decision. After that an EXISTING GUARDIAN decides — otherwise a child could
+-- hand "guardian" (and therefore a place in their locked circle) to anyone who
+-- asked, which is exactly the hole the lock is meant to close.
+CREATE OR REPLACE FUNCTION public.respond_guardianship(request_id UUID, accept BOOLEAN)
+RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  me  UUID := auth.uid();
+  rq  guardian_requests%ROWTYPE;
+BEGIN
+  IF me IS NULL THEN RAISE EXCEPTION 'Not authenticated'; END IF;
+
+  SELECT * INTO rq FROM guardian_requests WHERE id = request_id AND status = 'pending';
+  IF rq.id IS NULL THEN RAISE EXCEPTION 'That request is no longer open'; END IF;
+
+  IF public.is_child(rq.child_id) THEN
+    IF NOT public.is_guardian_of(me, rq.child_id) THEN
+      RAISE EXCEPTION 'Only an existing guardian can approve this';
+    END IF;
+  ELSIF me <> rq.child_id THEN
+    RAISE EXCEPTION 'Only that account can accept a guardian';
+  END IF;
+
+  IF NOT accept THEN
+    UPDATE guardian_requests SET status = 'declined' WHERE id = rq.id;
+    RETURN;
+  END IF;
+
+  PERFORM set_config('artemis.child_lock_bypass', 'on', true);
+
+  -- Becoming a managed account clears whoever was already there: "only your
+  -- guardians are in your circle" has to be true from the first moment, not
+  -- just for people added afterwards.
+  IF NOT public.is_child(rq.child_id) THEN
+    DELETE FROM circles WHERE owner_id = rq.child_id OR member_id = rq.child_id;
+    DELETE FROM invites
+     WHERE status = 'pending'
+       AND (from_user = rq.child_id
+            OR lower(to_email) = (SELECT lower(email) FROM profiles WHERE id = rq.child_id));
+  END IF;
+
+  INSERT INTO guardians (child_id, guardian_id)
+  VALUES (rq.child_id, rq.guardian_id)
+  ON CONFLICT DO NOTHING;
+
+  -- Both directions, so each sees the other's check-ins.
+  INSERT INTO circles (owner_id, member_id, relation, verified)
+  VALUES (rq.child_id, rq.guardian_id, 'Guardian', true)
+  ON CONFLICT DO NOTHING;
+  INSERT INTO circles (owner_id, member_id, relation, verified)
+  VALUES (rq.guardian_id, rq.child_id, 'Child', true)
+  ON CONFLICT DO NOTHING;
+
+  UPDATE guardian_requests SET status = 'accepted' WHERE id = rq.id;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.respond_guardianship(UUID, BOOLEAN) FROM public;
+GRANT EXECUTE ON FUNCTION public.respond_guardianship(UUID, BOOLEAN) TO authenticated;
+
+-- Release an account. Guardian-only, on purpose: a managed account that can
+-- unmanage itself is not managed.
+CREATE OR REPLACE FUNCTION public.end_guardianship(child UUID)
+RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  me UUID := auth.uid();
+BEGIN
+  IF me IS NULL THEN RAISE EXCEPTION 'Not authenticated'; END IF;
+  IF NOT public.is_guardian_of(me, child) THEN
+    RAISE EXCEPTION 'You do not manage that account';
+  END IF;
+
+  PERFORM set_config('artemis.child_lock_bypass', 'on', true);
+  DELETE FROM guardians WHERE child_id = child AND guardian_id = me;
+  DELETE FROM circles
+   WHERE (owner_id = child AND member_id = me) OR (owner_id = me AND member_id = child);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.end_guardianship(UUID) FROM public;
+GRANT EXECUTE ON FUNCTION public.end_guardianship(UUID) TO authenticated;
+
+-- NOTE for delete_my_account (supabase/launch_prep.sql): add
+--   PERFORM set_config('artemis.child_lock_bypass', 'on', true);
+-- before it deletes circle rows, or a child account cannot delete itself.
+-- That file also still names a `circle` table that does not exist — fix both
+-- together before relying on account deletion.

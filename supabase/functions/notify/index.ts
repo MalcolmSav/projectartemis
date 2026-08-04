@@ -211,15 +211,26 @@ async function handleCheckIn(
     }
 
   } else if (kind === 'alarm') {
-    // Someone raised an alarm — notify everyone in their circle (alarms always fire, ignore prefs)
-    const [{ data: myEdges }, { data: theirEdges }] = await Promise.all([
-      supabase.from('circles').select('member_id').eq('owner_id', userId),
-      supabase.from('circles').select('owner_id').eq('member_id', userId),
-    ])
-    const ids = [
-      ...((myEdges ?? []) as any[]).map((e) => e.member_id),
-      ...((theirEdges ?? []) as any[]).map((e) => e.owner_id),
-    ].filter((id, i, arr) => id && arr.indexOf(id) === i) as string[]
+    // Someone raised an alarm — notify their circle (alarms always fire, ignore prefs).
+    //
+    // `alert_ids` narrows that list: a "check on me" timer lets the user pick
+    // exactly who should hear about it, and pushing to everyone anyway would
+    // make that choice a lie. Null/empty means the whole circle, which is what
+    // every other alarm (the red button, a wellness response) sends.
+    const chosen = Array.isArray(row.alert_ids) ? (row.alert_ids as string[]) : []
+    let ids: string[]
+    if (chosen.length > 0) {
+      ids = chosen
+    } else {
+      const [{ data: myEdges }, { data: theirEdges }] = await Promise.all([
+        supabase.from('circles').select('member_id').eq('owner_id', userId),
+        supabase.from('circles').select('owner_id').eq('member_id', userId),
+      ])
+      ids = [
+        ...((myEdges ?? []) as any[]).map((e) => e.member_id),
+        ...((theirEdges ?? []) as any[]).map((e) => e.owner_id),
+      ].filter((id, i, arr) => id && arr.indexOf(id) === i) as string[]
+    }
 
     if (ids.length > 0) {
       const { data: profiles } = await supabase

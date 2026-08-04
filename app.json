@@ -2,7 +2,7 @@
   "expo": {
     "name": "Artemis",
     "slug": "artemis",
-    "version": "1.4",
+    "version": "1.5",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,

@@ -8,6 +8,9 @@ export interface DBEvent {
   date: string;
   title: string;
   time: string | null;
+  /** "HH:MM" the event is expected to be over. An end earlier than `time`
+   *  means it runs past midnight. Drives the check-in reminder. */
+  end_time: string | null;
   location: string | null;
   notes: string | null;
   check_in: boolean;
@@ -16,6 +19,28 @@ export interface DBEvent {
 
 export interface FriendEvent extends DBEvent {
   owner: Profile | null;
+}
+
+export interface EventInput {
+  date: string;
+  title: string;
+  time?: string;
+  endTime?: string;
+  location?: string;
+  notes?: string;
+  checkIn?: boolean;
+}
+
+function columns(e: EventInput) {
+  return {
+    date: e.date,
+    title: e.title,
+    time: e.time ?? null,
+    end_time: e.endTime ?? null,
+    location: e.location ?? null,
+    notes: e.notes ?? null,
+    check_in: !!e.checkIn,
+  };
 }
 
 export function useEvents() {
@@ -68,20 +93,21 @@ export function useEvents() {
   }, [user, refresh]);
 
   const addEvent = useCallback(
-    async (e: { date: string; title: string; time?: string; location?: string; notes?: string; checkIn?: boolean }) => {
+    async (e: EventInput) => {
       if (!user) return { error: 'Not signed in' };
-      const { error } = await supabase.from('events').insert({
-        user_id: user.id,
-        date: e.date,
-        title: e.title,
-        time: e.time ?? null,
-        location: e.location ?? null,
-        notes: e.notes ?? null,
-        check_in: !!e.checkIn,
-      });
+      const { error } = await supabase.from('events').insert({ user_id: user.id, ...columns(e) });
       return error ? { error: error.message } : {};
     },
     [user],
+  );
+
+  const updateEvent = useCallback(
+    async (id: string, e: EventInput) => {
+      const { error } = await supabase.from('events').update(columns(e)).eq('id', id);
+      if (!error) await refresh();
+      return error ? { error: error.message } : {};
+    },
+    [refresh],
   );
 
   const removeEvent = useCallback(async (id: string) => {
@@ -89,5 +115,5 @@ export function useEvents() {
     return error ? { error: error.message } : {};
   }, []);
 
-  return { events, friendEvents, loading, error, refresh, addEvent, removeEvent };
+  return { events, friendEvents, loading, error, refresh, addEvent, updateEvent, removeEvent };
 }

@@ -17,6 +17,11 @@ begin
     raise exception 'Not authenticated';
   end if;
 
+  -- Child accounts can't normally drop a guardian from their circle (see the
+  -- circles_child_lock_delete trigger in pending_migrations.sql §9). Deleting
+  -- the whole account is the one case where they must be able to.
+  perform set_config('artemis.child_lock_bypass', 'on', true);
+
   -- Delete app data. Order matters for FK constraints; adjust if your schema
   -- has different constraint directions.
   delete from messages        where sender_id    = uid or recipient_id = uid;
@@ -28,7 +33,10 @@ begin
   delete from events          where user_id      = uid;
   delete from reports         where user_id      = uid;
   -- Circle edges: rows where this user is either side of the relationship.
-  delete from circle          where user_id      = uid or friend_id    = uid;
+  -- The table is `circles` (owner_id/member_id) — this said `circle`
+  -- (user_id/friend_id), which does not exist, so every call raised 42P01 and
+  -- no account could ever be deleted.
+  delete from circles         where owner_id     = uid or member_id    = uid;
   delete from profiles        where id           = uid;
 
   -- Finally, remove the Supabase auth user. This invalidates all sessions.
