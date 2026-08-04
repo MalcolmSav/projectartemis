@@ -54,8 +54,22 @@ jobs:
           path: ${{ github.workspace }}/artemis.ipa
           if-no-files-found: error
 
+      # --no-wait: schedule the submission and exit.
+      #
+      # By default `eas submit` blocks until EAS Submit finishes, polling
+      # api.expo.dev the whole time. The submission is already safely handed off
+      # to EAS servers the moment "Scheduled iOS submission" prints — the wait
+      # buys nothing, and it fails the step for reasons that have nothing to do
+      # with the build. On 2026-08-04 Expo's queue was backed up for over an
+      # hour, and 40 minutes into the polling the runner hit a transient
+      # `getaddrinfo ENOTFOUND api.expo.dev`; the CLI treats any GraphQL error
+      # during the wait as fatal and exited 1. The submission itself completed
+      # fine, but the run was red and looked like a failed release.
+      #
+      # Track the submission at the URL this step prints, or with
+      # `eas submit:list --platform ios`.
       - name: Submit to TestFlight
         if: ${{ inputs.submit }}
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: eas submit --platform ios --path "$GITHUB_WORKSPACE/artemis.ipa" --profile production --non-interactive
+        run: eas submit --platform ios --path "$GITHUB_WORKSPACE/artemis.ipa" --profile production --non-interactive --no-wait
