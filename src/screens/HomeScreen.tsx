@@ -1036,14 +1036,28 @@ function NotificationsSheet({
 }) {
   const t = useTheme();
   const tr = useT();
-  const { pendingInvites } = useCircle();
+  const { pendingInvites, accept, decline } = useCircle();
   const { receivedChecks, sentChecks } = useCheckIns();
-  const { incoming: guardianRequests } = useGuardianship();
+  const { incoming: guardianRequests, isChild } = useGuardianship();
+  const [busyInvite, setBusyInvite] = useState<string | null>(null);
   const empty =
-    pendingInvites.length === 0 &&
+    (isChild || pendingInvites.length === 0) &&
     guardianRequests.length === 0 &&
     receivedChecks.length === 0 &&
     sentChecks.length === 0;
+
+  const answerInvite = async (inv: (typeof pendingInvites)[number], yes: boolean) => {
+    setBusyInvite(inv.id);
+    Haptics.impactAsync(yes ? Haptics.ImpactFeedbackStyle.Medium : Haptics.ImpactFeedbackStyle.Light);
+    const res = yes ? await accept(inv) : await decline(inv);
+    setBusyInvite(null);
+    if (res.error) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert(tr("That didn't work"), res.error);
+      return;
+    }
+    if (yes) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
 
   const statusFor = (s: (typeof sentChecks)[number]['status']) => {
     switch (s) {
@@ -1157,35 +1171,67 @@ function NotificationsSheet({
             </Pressable>
           ))}
 
-          {pendingInvites.map((inv) => (
-            <Pressable
-              key={inv.id}
-              onPress={onOpenCircle}
-              style={{
-                backgroundColor: t.colors.moonlight,
-                borderRadius: t.radii.md,
-                padding: 14,
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 12,
-              }}
-            >
-              <Avatar
-                name={inv.from?.name ?? '?'}
-                size={40}
-                photoUri={inv.from?.avatar_url ?? undefined}
-              />
-              <View style={{ flex: 1 }}>
-                <Text variant="body" weight="semibold">
-                  {inv.from?.name ?? inv.from?.email ?? 'Someone'}
-                </Text>
-                <Text variant="meta" color={t.colors.inkMute}>
-                  {tr('wants to add you to their circle')}
-                </Text>
-              </View>
-              <IconChevron color={t.colors.inkMute} />
-            </Pressable>
-          ))}
+          {/* Answered right here. Sending someone to the Circle tab to tap
+              Accept was a detour through a screen they hadn't asked for.
+              A managed account can't accept anyone (the invites trigger
+              refuses it), so it doesn't get the buttons. */}
+          {!isChild &&
+            pendingInvites.map((inv) => {
+              const fromName = inv.from?.name ?? inv.from?.email ?? 'Someone';
+              const answering = busyInvite === inv.id;
+              return (
+                <View
+                  key={inv.id}
+                  style={{
+                    backgroundColor: t.colors.moonlight,
+                    borderRadius: t.radii.md,
+                    padding: 14,
+                    gap: 12,
+                  }}
+                >
+                  <Pressable
+                    onPress={onOpenCircle}
+                    accessibilityRole="button"
+                    accessibilityLabel={`See ${fromName} in your circle`}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}
+                  >
+                    <Avatar
+                      name={inv.from?.name ?? '?'}
+                      size={40}
+                      photoUri={inv.from?.avatar_url ?? undefined}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text variant="body" weight="semibold">
+                        {fromName}
+                      </Text>
+                      <Text variant="meta" color={t.colors.inkMute}>
+                        {tr('wants to add you to their circle')}
+                      </Text>
+                    </View>
+                    <IconChevron color={t.colors.inkMute} />
+                  </Pressable>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <PillButton
+                      size="md"
+                      style={{ flex: 1 }}
+                      disabled={answering}
+                      onPress={() => answerInvite(inv, true)}
+                    >
+                      {answering ? tr('Saving…') : tr('Accept')}
+                    </PillButton>
+                    <PillButton
+                      variant="ghost"
+                      size="md"
+                      style={{ flex: 1 }}
+                      disabled={answering}
+                      onPress={() => answerInvite(inv, false)}
+                    >
+                      {tr('Decline')}
+                    </PillButton>
+                  </View>
+                </View>
+              );
+            })}
 
           {sentChecks.length > 0 && (
             <>

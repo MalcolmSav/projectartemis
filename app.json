@@ -16,7 +16,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "buildNumber": "1",
+      "buildNumber": "2",
       "bundleIdentifier": "se.embelstudio.artemis",
       "icon": "./assets/icon-1024.png",
       "usesAppleSignIn": true,

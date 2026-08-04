@@ -193,7 +193,10 @@ export function FakeCallIncomingScreen() {
             <IconPhone size={28} color="#fff" />
           </Pressable>
           <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, fontFamily: t.type.body }}>
-            {tr('Accept')}
+            {/* "Answer", not "Accept" — a ringing phone, and it keeps the
+                translation from bleeding into circle invites, which share the
+                dictionary by English source string. */}
+            {tr('Answer')}
           </Text>
         </View>
       </View>

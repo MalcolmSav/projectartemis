@@ -147,7 +147,10 @@ export const sv: Record<string, string> = {
   'Cancel scheduled call': 'Avbryt schemalagt samtal',
   'incoming call · mobil': 'inkommande samtal · mobil',
   Decline: 'Avböj',
-  Accept: 'Svara',
+  Answer: 'Svara',
+  // "Accept" is the circle-invite / guardian-request sense, not the fake call's
+  // ringing-phone one — that button says "Answer".
+  Accept: 'Acceptera',
   End: 'Avsluta',
   Mute: 'Tyst',
   Unmute: 'Ljud på',
